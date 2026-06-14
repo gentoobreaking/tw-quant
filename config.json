@@ -1,0 +1,192 @@
+{
+  "cache_ttl_seconds": 7200,
+  "request_retries": 3,
+
+  "rate_limit": {
+    "twse": { "delay": 2.0, "jitter": 0.5 },
+    "tdcc": { "delay": 3.0, "jitter": 0.5 },
+    "yf":   { "delay": 2.0, "jitter": 0.5 }
+  },
+
+  "market_cap_groups": {
+    "large": {
+      "threshold": 500000000000,
+      "label": "大型",
+      "rev_yoy_min": 5.0,
+      "debt_ratio_max": 60.0,
+      "eps_min": 1.0
+    },
+    "mid": {
+      "threshold": 50000000000,
+      "label": "中型",
+      "rev_yoy_min": 10.0,
+      "debt_ratio_max": 50.0,
+      "eps_min": 0.5
+    },
+    "small": {
+      "threshold": 0,
+      "label": "小型",
+      "rev_yoy_min": 15.0,
+      "debt_ratio_max": 45.0,
+      "eps_min": 0.0
+    },
+    "default": {
+      "label": "未知",
+      "rev_yoy_min": 10.0,
+      "debt_ratio_max": 50.0,
+      "eps_min": 0.5
+    }
+  },
+
+  "scoring_weights": {
+    "c1": 10,
+    "c2": 5,
+    "c3": 5,
+    "c4": 10,
+    "c5": 5,
+    "c6": 5,
+    "c7": 10,
+    "c9": 5,
+    "c10": 5,
+    "c11": 10,
+    "c12": 5,
+    "c13": 5,
+    "c14": 5,
+    "c15": 5,
+    "c18": 10,
+    "c19_bonus": 5
+  },
+
+  "conditions": {
+    "C1": {
+      "description": "收盤價 > 60MA 且 60MA 向上",
+      "ma_period": 60,
+      "trend_check_days": 5
+    },
+    "C2": {
+      "description": "收盤價 > 20MA",
+      "ma_period": 20
+    },
+    "C3": {
+      "description": "前 N 日最低價曾跌破 20MA",
+      "ma_period": 20,
+      "lookback_days": 5
+    },
+    "C4": {
+      "description": "成交量 > 5 日均量",
+      "volume_ma_period": 5,
+      "volume_ratio_min": 1.0
+    },
+    "C5": { "description": "EPS > 門檻 (由市值分群決定)" },
+    "C6": { "description": "負債比 < 門檻 (由市值分群決定)" },
+    "C7": { "description": "月營收 YoY > 門檻 (由市值分群決定)" },
+    "C9": {
+      "description": "存貨天數 < 門檻",
+      "inv_days_max": 365
+    },
+    "C10": {
+      "description": "存貨天數在歷史均值 ± N σ 內",
+      "sigma_multiplier": 2.0
+    },
+
+    "C11": {
+      "description": "跌破均線期間法人連續買超 N 日",
+      "ma_period": 20,
+      "lookback_window": 20,
+      "consecutive_days": 3
+    },
+    "C12": {
+      "description": "千張大戶比率近 N 週不減",
+      "large_share_threshold": 1000000,
+      "weeks_to_check": 3,
+      "trend_min": -0.5
+    },
+    "C13": {
+      "description": "近 N 日法人賣超且融資增 → 淘汰",
+      "lookback_days": 3
+    },
+
+    "C14": {
+      "description": "60MA 回測買點 (距60MA 0~5%)",
+      "ma_period": 60,
+      "proximity_min": 0.0,
+      "proximity_max": 5.0
+    },
+    "C15": {
+      "description": "止跌回升 (連3日上漲)",
+      "consecutive_up_days": 3
+    },
+    "C16": {
+      "description": "近 N 日漲幅 ≥ M% → 淘汰",
+      "lookback_days": 40,
+      "gain_max": 80.0
+    },
+    "C17": {
+      "description": "股價在高檔且跌破月線 → 淘汰",
+      "near_high_ratio": 0.85,
+      "ma_period": 20
+    },
+
+    "C18": {
+      "description": "60 分線黃金交叉 OR 日線帶量紅 K",
+      "fast_ma_period_60min": 20,
+      "slow_ma_period_60min": 60,
+      "volume_ma_period": 5,
+      "volume_ratio_min": 1.2,
+      "yf_60min_period": "1mo"
+    },
+    "C19": {
+      "description": "收 >60MA + KD 金叉且 K,D < N",
+      "ma_period": 60,
+      "kd_period": 9,
+      "kd_threshold": 20,
+      "kd_check_offset": 1
+    },
+    "C20": {
+      "description": "收 <60MA + KD 死叉且 K,D > N → 淘汰",
+      "ma_period": 60,
+      "kd_period": 9,
+      "kd_threshold": 80,
+      "kd_check_offset": 1
+    }
+  },
+
+  "alerts": {
+    "break_ma": {
+      "description": "原先連續站上 20MA N 日，今日跌破",
+      "ma_period": 20,
+      "consecutive_above_days": 2
+    },
+    "break_k_low": {
+      "description": "收盤跌破近日發動紅 K 最低點",
+      "lookback_window": 20,
+      "body_ratio_min": 0.5,
+      "volume_ratio_min": 1.3
+    }
+  },
+
+  "tier_thresholds": {
+    "enter_min": 75,
+    "watch_min": 40
+  },
+
+  "hard_reject_rules": {
+    "c16": false,
+    "c17": false,
+    "c20": true,
+    "c13": false
+  },
+
+  "exit_params": {
+    "ma20_period": 20,
+    "ma60_period": 60,
+    "lookback_days_e1": 30,
+    "lookback_days_e2": 40,
+    "high_ratio_e2": 0.95,
+    "volume_ratio_e4": 0.7
+  },
+
+  "batch": {
+    "inter_stock_delay": 0.3
+  }
+}

@@ -1,0 +1,172 @@
+{
+  "cache_ttl_seconds": 7200,
+  "request_retries": 3,
+
+  "rate_limit": {
+    "twse": { "delay": 2.0, "jitter": 0.5 },
+    "tdcc": { "delay": 3.0, "jitter": 0.5 },
+    "yf":   { "delay": 1.0, "jitter": 0.3 }
+  },
+
+  "scoring_weights": {
+    "c1": 10,
+    "c2": 5,
+    "c3": 5,
+    "c4": 10,
+    "c5": 5,
+    "c6": 5,
+    "c7": 5,
+    "c8": 5,
+    "c11": 10,
+    "c12": 10,
+    "c13": 5,
+    "c14": 5,
+    "c15": 5,
+    "c18": 10,
+    "c19_bonus": 5
+  },
+
+  "conditions": {
+    "C1": {
+      "ma_period": 60,
+      "trend_check_days": 5
+    },
+    "C2": {
+      "ma_period": 20
+    },
+    "C3": {
+      "ma_period": 20,
+      "lookback_days": 5
+    },
+    "C4": {
+      "volume_ma_period": 5,
+      "volume_ma_long_period": 20,
+      "volume_ratio_min": 1.0
+    },
+
+    "C5": {
+      "premium_max": 3.0,
+      "discount_bonus": true
+    },
+    "C6": {
+      "ma_period": 60,
+      "min_stocks_above": 2
+    },
+    "C7": {
+      "expense_ratio_max": 0.43
+    },
+    "C8": {
+      "description": "高股息填息檢查：近3次除息中至少2次在30日內填息",
+      "fill_days_max": 30,
+      "divs_to_check": 3,
+      "min_fill_ratio": 0.6
+    },
+
+    "C11": {
+      "ma_period": 20,
+      "lookback_window": 20,
+      "consecutive_days": 3
+    },
+    "C12": {
+      "large_share_threshold": 1000000,
+      "weeks_to_check": 3,
+      "trend_min": -0.5
+    },
+    "C13": {
+      "lookback_days": 3
+    },
+
+    "C14": {
+      "ma_period": 60,
+      "proximity_min": 0.0,
+      "proximity_max": 5.0,
+      "type_adjusted": {
+        "高股息": { "proximity_max": 8.0 },
+        "槓桿/反向型": { "proximity_max": 10.0 }
+      }
+    },
+    "C15": {
+      "consecutive_up_days": 3,
+      "type_adjusted": {
+        "槓桿/反向型": {
+          "relaxed_mode": true,
+          "up_days_in_window": 3,
+          "window_days": 5
+        }
+      }
+    },
+    "C16": {
+      "lookback_days": 40,
+      "gain_max": 80.0,
+      "type_adjusted": {
+        "高股息": { "gain_max": 40.0 },
+        "槓桿/反向型": { "gain_max": 80.0, "lookback_days": 20 }
+      }
+    },
+    "C17": {
+      "near_high_ratio": 0.85,
+      "ma_period": 20
+    },
+
+    "C18": {
+      "fast_ma_period_60min": 20,
+      "slow_ma_period_60min": 60,
+      "volume_ma_period": 5,
+      "volume_ratio_min": 1.2,
+      "yf_60min_period": "1mo"
+    },
+    "C19": {
+      "ma_period": 60,
+      "kd_period": 20,
+      "k_smooth": 5,
+      "d_smooth": 5,
+      "kd_threshold": 20,
+      "kd_check_offset": 1
+    },
+    "C20": {
+      "ma_period": 60,
+      "kd_period": 20,
+      "k_smooth": 5,
+      "d_smooth": 5,
+      "kd_threshold": 80,
+      "kd_check_offset": 1
+    }
+  },
+
+  "alerts": {
+    "break_ma": {
+      "ma_period": 20,
+      "consecutive_above_days": 2
+    },
+    "break_k_low": {
+      "lookback_window": 20,
+      "body_ratio_min": 0.5,
+      "volume_ratio_min": 1.3
+    }
+  },
+
+  "tier_thresholds": {
+    "enter_min": 75,
+    "watch_min": 40
+  },
+
+  "hard_reject_rules": {
+    "c16": false,
+    "c17": false,
+    "c20": true,
+    "c13": false
+  },
+
+  "exit_params": {
+    "ma20_period": 20,
+    "ma60_period": 60,
+    "lookback_days_e1": 30,
+    "lookback_days_e2": 40,
+    "high_ratio_e2": 0.95,
+    "volume_ratio_e4": 0.7
+  },
+
+  "batch": {
+    "inter_stock_delay": 0.3
+  }
+}

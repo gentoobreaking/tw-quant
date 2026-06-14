@@ -1,0 +1,45 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*.so
+.Python
+
+# 測試
+.pytest_cache/
+
+# 快取
+.cache/
+.cache_etf/
+*.db               # SQLite 快取資料庫
+common/screening_results/
+
+# 日誌
+logs/
+error.log
+
+# 備份
+backups/
+
+# 篩選結果（動態產出，由 dump_candidates.py 維護）
+candidates.csv
+candidates_ETF.csv
+candidates_ETN.csv
+candidates_REAT.csv
+
+# 舊殘留檔（dump_candidates.py 產生新檔後的舊版）
+candidates_all.csv
+candidates_etf_all.csv
+candidates_etf_test.csv
+candidates.csv.example
+
+# 篩選報告（每月動態產出）
+screening_results/
+
+# GitHub workflows（CI/CD 需另外設定權限，暫不進版控）
+.github/workflows/test.yml
+
+# IDE
+.idea/
+.vscode/
+*.swp
