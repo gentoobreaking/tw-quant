@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "tw-quant"
+version = "5.0.0"
+description = "台股/ETF 篩選系統 — 技術面、基本面、籌碼面多維度篩選"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.20",
+    "pandas>=1.3",
+    "requests>=2.25",
+    "yfinance>=0.2.50",
+    "beautifulsoup4>=4.10",
+    "colorama>=0.4",
+    "tqdm>=4.60",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
