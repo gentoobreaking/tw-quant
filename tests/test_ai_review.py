@@ -99,9 +99,12 @@ def test_ai_evaluate_success():
 
 
 def test_ai_evaluate_failure_returns_placeholder():
-    with patch("requests.post", return_value=_mock_post(status=500)):
-        out = ai_evaluate(ROW, BASE_CFG)
+    cfg = dict(BASE_CFG, retries=2)
+    with patch("requests.post", return_value=_mock_post(status=500)), \
+         patch("common.ai_review.time.sleep"):
+        out = ai_evaluate(ROW, cfg)
     assert out.startswith("—（AI 未回應")
+    assert "已重試" in out
     assert "500" in out
 
 

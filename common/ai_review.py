@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 from typing import Optional
 
 import requests
@@ -85,14 +86,40 @@ def _call_llm(messages: list[dict], ai_cfg: dict,
         "max_tokens": ai_cfg["max_tokens"],
     }
     sess = session or requests
-    r = sess.post(url, json=payload, headers=headers, timeout=90)
-    if r.status_code != 200:
-        hint = ""
+    attempts = int(ai_cfg.get("retries", 3))
+    RETRYABLE = {429, 500, 502, 503, 504}
+    last_err = "未知錯誤"
+
+    for attempt in range(attempts):
+        try:
+            r = sess.post(url, json=payload, headers=headers, timeout=90)
+        except requests.exceptions.RequestException as e:
+            logger.warning("AI 呼叫連線失敗（attempt %d/%d）：%s",
+                           attempt + 1, attempts, str(e)[:80])
+            last_err = str(e)[:120]
+            if attempt < attempts - 1:
+                time.sleep(5 * (attempt + 1))
+            continue
+
         body = r.text[:150]
+        if r.status_code == 200:
+            return r.json()["choices"][0]["message"]["content"].strip()
+        if r.status_code in RETRYABLE:
+            logger.warning("AI 呼叫 HTTP %d（attempt %d/%d），稍後重試",
+                           r.status_code, attempt + 1, attempts)
+            last_err = f"HTTP {r.status_code}: {body}"
+            if attempt < attempts - 1:
+                time.sleep(5 * (attempt + 1))
+            continue
+
+        # 不可重試的客戶端錯誤（401/404 等）
+        hint = ""
         if r.status_code in (401, 404) and "model" in body.lower():
             hint = (f"；請確認 model id 是否為該端點 /models 清單中的名稱"
                     f"（可查 {ai_cfg['base_url']}/models）")
         raise RuntimeError(f"HTTP {r.status_code}: {body}{hint}")
+
+    raise RuntimeError(f"HTTP 錯誤（已重試 {attempts} 次）: {last_err}")
     return r.json()["choices"][0]["message"]["content"].strip()
 
 
