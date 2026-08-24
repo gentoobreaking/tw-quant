@@ -105,13 +105,18 @@ def check_finmind() -> tuple[bool, str, str]:
     from common.cache import DiskCache
     from common.rate_limit import RateLimiter
     from common.finmind import FinMindClient
+    import os as _os
     import json as _json
 
-    token = ""
-    cfg = Path(__file__).resolve().parent.parent / "config_pipeline.json"
-    if cfg.exists():
-        token = _json.loads(cfg.read_text(encoding="utf-8")).get(
-            "finmind_token", "") or ""
+    token = _os.environ.get("FINMIND_TOKEN", "")
+    if not token:
+        cfg = Path(__file__).resolve().parent.parent / "config_secrets.json"
+        if cfg.exists():
+            try:
+                token = _json.loads(cfg.read_text(
+                    encoding="utf-8")).get("finmind_token", "") or ""
+            except Exception:
+                pass
 
     rl = RateLimiter({"finmind": {"delay": 0.7, "jitter": 0.2}})
     fm = FinMindClient(token=token or None, rate_limiter=rl)

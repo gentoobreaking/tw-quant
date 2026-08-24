@@ -68,5 +68,14 @@
       "delay": 1.0,
       "jitter": 0.3
     }
+  },
+  "ai_review": {
+    "_comment": "Top5 AI 質性覆核。base_url 範例：雲端 https://api.openai.com/v1／本地 Qwen http://localhost:11434/v1。api_key 建議放 config_secrets.json 的 ai_review.api_key 或環境變數 OPENAI_API_KEY",
+    "enabled": false,
+    "base_url": "",
+    "model": "",
+    "temperature": 0.2,
+    "max_tokens": 300,
+    "system_prompt": "你現在是一名資深台股量化投資分析師，拿到數據不是只是看數據給結論，而是要重新收集相關數據及校驗數據及分析市場後，給出真實的台股量化投資建議。"
   }
 }

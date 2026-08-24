@@ -39,10 +39,12 @@ SECRETS_PATH = BASE_DIR / "config_secrets.json"
 
 
 def _load_secrets(cfg: dict) -> dict:
-    """合併機密設定：環境變數 > config_secrets.json > 主檔既有值
+    """機密一律走環境變數（避免進版控/設定檔）：
 
-    finmind_token / ai_review.api_key 屬機密，
-    config_pipeline.json 中應保持空字串。
+    - FINMIND_TOKEN：FinMind 備援通道
+    - OPENAI_API_KEY / OPENAI_BASE_URL：AI 評估端點
+      （OPENAI_* 由 common.ai_review.resolve_ai_config 直接讀取）
+    config_secrets.json 為相容舊制的可選來源。
     """
     import os
     secrets_path = Path(SECRETS_PATH)
@@ -222,6 +224,15 @@ def main(argv: Optional[list] = None) -> int:
         top10 = annotated[annotated["grade"] != "R"].head(args.top)
         logger.info("stage2 完成：%d 檔淘汰 / %d 檔分級 / Top%d 輸出",
                     len(rejected), len(graded_passed), len(top10))
+
+        # AI 質性覆核（選配；未啟用時欄位為「—」）
+        if not args.dry_run:
+            from common.ai_review import ai_evaluate
+            ai_cfg = cfg.get("ai_review", {})
+            reviews = [ai_evaluate(r.to_dict(), ai_cfg, cache=cache)
+                       for _, r in top5.iterrows()]
+            top5["AI評估"] = reviews
+            logger.info("AI 覆核完成：%d 檔", len(reviews))
 
         md_path, *_ = write_reports(annotated, top10, details,
                                     rejected=rejected,

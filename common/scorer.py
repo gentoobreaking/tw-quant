@@ -225,10 +225,12 @@ def write_reports(full: pd.DataFrame, top10: pd.DataFrame,
                     "eps_2026", "eps_2027", "rev_1m", "rev_3m",
                     "dist_60d_high", "close",
                     "entry_low", "entry_high", "stop_loss",
-                    "target_price", "rr", "conclusion"]
+                    "target_price", "rr", "conclusion", "AI評估"]
             use5 = [c for c in use5 if c in top5.columns]
             if "訊號" not in top5.columns:
                 use5 = [c for c in use5 if c != "訊號"]
+            if "grade" in top5.columns and "conclusion" in top5.columns:
+                pass
             f.write("\n## 一、Top5 買點清單\n\n")
             f.write(top5[use5].to_markdown(index=False))
             f.write("\n")
