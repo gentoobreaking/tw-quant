@@ -316,14 +316,21 @@ def score_fundamentals(ticker: str, *, cache=None, rate_limiter=None,
                     "TaiwanStockCashFlowsStatement", t)) if finmind else None)
             if cf_fn:
                 rows = cf_fn(ticker)
+                # FinMind CF 類型為英文代碼；取最新季
+                latest = max((r.get("date", "") for r in rows), default="")
                 ocf = capex = None
                 for r in rows:
-                    t = str(r.get("type", ""))
+                    if r.get("date") != latest:
+                        continue
+                    typ = str(r.get("type", ""))
                     v = float(r.get("value") or 0)
-                    if "營業" in t and "現金" in t:
-                        ocf = max(v, ocf or v) if ocf is None else v
-                    if "固定資產" in t or "資本支出" in t:
-                        capex = min(abs(v), capex if capex is not None else abs(v))
+                    if typ == "NetCashInflowFromOperatingActivities":
+                        ocf = v
+                    elif typ == "CashFlowsFromOperatingActivities" \
+                            and ocf is None:
+                        ocf = v
+                    elif typ == "PropertyAndPlantAndEquipment":
+                        capex = abs(v)   # 購置固定資產（投資活動流出）
                 fcf_positive = ocf is not None and ocf > 0
                 if capex is not None:
                     fcf_positive = (ocf - capex) > 0
@@ -419,17 +426,24 @@ def score_chips(ticker: str, *, cache=None, rate_limiter=None,
             logger.info("籌碼主路徑無資料，FinMind 備援啟用（%s）", ticker)
             rows = finmind.fetch_dataset(
                 "TaiwanStockInstitutionalInvestorsBuySell", ticker)
-            # 長表：date, investor, buy, sell
+            # 長表：date, name(投資人別), buy, sell
             agg: dict[str, dict[str, float]] = {}
             for r in rows:
-                inv = str(r.get("investor", ""))
+                inv = str(r.get("name") or r.get("investor") or "")
                 net = (float(r.get("buy") or 0) - float(r.get("sell") or 0))
                 a = agg.setdefault(r.get("date", ""), {})
                 a[inv] = a.get(inv, 0) + net
             if agg:
-                dates = sorted(agg)[-20:]
-                foreign_20d = sum(a.get("ForeignInvestor", 0) for a in (agg[d] for d in dates)) / 1000
-                trust_20d = sum(a.get("InvestmentTrust", 0) for a in (agg[d] for d in dates)) / 1000
+                def _win(dates_list):
+                    return (
+                        sum(a.get("Foreign_Investor", 0)
+                            + a.get("Foreign_Dealer_Self", 0)
+                            for a in (agg[d] for d in dates_list)) / 1000,
+                        sum(a.get("Investment_Trust", 0)
+                            for a in (agg[d] for d in dates_list)) / 1000)
+                all_dates = sorted(agg)
+                foreign_20d, trust_20d = _win(all_dates[-20:])
+                foreign_5d, trust_5d = _win(all_dates[-5:])
 
         # 5 日窗口（T86 再取一次較小窗口）
         if rate_limiter is not None and cache is not None:

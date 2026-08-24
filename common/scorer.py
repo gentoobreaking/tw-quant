@@ -200,12 +200,14 @@ def write_reports(full: pd.DataFrame, top10: pd.DataFrame,
 
         # 一、Top5 買點表（若提供）
         if top5 is not None and not top5.empty:
-            use5 = ["ticker", "name", "sector", "grade", "total",
+            use5 = ["訊號", "ticker", "name", "sector", "grade", "total",
                     "eps_2026", "eps_2027", "rev_1m", "rev_3m",
                     "dist_60d_high", "close",
                     "entry_low", "entry_high", "stop_loss",
                     "target_price", "rr", "conclusion"]
             use5 = [c for c in use5 if c in top5.columns]
+            if "訊號" not in top5.columns:
+                use5 = [c for c in use5 if c != "訊號"]
             f.write("\n## 一、Top5 買點清單\n\n")
             f.write(top5[use5].to_markdown(index=False))
             f.write("\n")

@@ -31,7 +31,8 @@ def test_fundamentals_full_marks():
             {"date": "2026Q1", "type": "GrossProfit", "value": "35"},   # 35% ↑
         ],
         cf_provider=lambda t: [
-            {"type": "營業活動之淨現金流入（出）", "value": "500"},
+            {"date": "2026Q2", "type": "NetCashInflowFromOperatingActivities",
+             "value": "500"},
         ])
     assert r["_sub"]["gm_trend"] == 2     # 毛利率上升
     assert r["gross_margin_q"] == 40.0
@@ -90,9 +91,9 @@ def test_chips_finmind_fallback():
     rows = []
     for d in range(20):
         rows += [
-            {"date": f"2026-08-{d+1:02d}", "investor": "ForeignInvestor",
+            {"date": f"2026-08-{d+1:02d}", "name": "Foreign_Investor",
              "buy": 1000, "sell": 500},      # 每日淨買 +500 張
-            {"date": f"2026-08-{d+1:02d}", "investor": "InvestmentTrust",
+            {"date": f"2026-08-{d+1:02d}", "name": "Investment_Trust",
              "buy": 200, "sell": 300},       # 每日淨賣 −100 張
         ]
     fm.fetch_dataset.side_effect = lambda ds, tid=None, **kw: (
