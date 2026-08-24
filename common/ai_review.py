@@ -87,7 +87,12 @@ def _call_llm(messages: list[dict], ai_cfg: dict,
     sess = session or requests
     r = sess.post(url, json=payload, headers=headers, timeout=90)
     if r.status_code != 200:
-        raise RuntimeError(f"HTTP {r.status_code}: {r.text[:120]}")
+        hint = ""
+        body = r.text[:150]
+        if r.status_code in (401, 404) and "model" in body.lower():
+            hint = (f"；請確認 model id 是否為該端點 /models 清單中的名稱"
+                    f"（可查 {ai_cfg['base_url']}/models）")
+        raise RuntimeError(f"HTTP {r.status_code}: {body}{hint}")
     return r.json()["choices"][0]["message"]["content"].strip()
 
 
