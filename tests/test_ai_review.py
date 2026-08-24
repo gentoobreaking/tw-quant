@@ -35,6 +35,24 @@ def test_resolve_env_overrides_config(monkeypatch):
     assert r["enabled"] is True
 
 
+def test_auto_enable_when_env_complete(monkeypatch):
+    """三個環境變數齊備即自動啟用（config 無需 enabled 鍵）"""
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("OPENAI_MODEL", "qwen2.5:14b")
+    r = resolve_ai_config({})                      # config 完全沒設定
+    assert r["enabled"] is True                    # 自動生效
+    assert r["api_key"] == ""                      # 本地端點可無金鑰
+
+
+def test_explicit_false_forces_off(monkeypatch):
+    """明確 enabled: false → 即使環境變數齊備也關閉"""
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://x/v1")
+    monkeypatch.setenv("OPENAI_MODEL", "m")
+    r = resolve_ai_config(dict(BASE_CFG, enabled=False))
+    assert r["enabled"] is False
+
+
 def test_resolve_falls_back_to_config(monkeypatch):
     for v in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL"):
         monkeypatch.delenv(v, raising=False)
@@ -44,7 +62,10 @@ def test_resolve_falls_back_to_config(monkeypatch):
 
 
 def test_resolve_disabled_when_missing():
-    r = resolve_ai_config({"enabled": True})   # 無 base_url/model
+    # 環境變數與 config 都沒有端點 → 不啟用
+    r = resolve_ai_config({"enabled": True})
+    assert r["enabled"] is False
+    r = resolve_ai_config({})
     assert r["enabled"] is False
 
 

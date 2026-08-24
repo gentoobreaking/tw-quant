@@ -46,8 +46,11 @@ def resolve_ai_config(cfg_ai: dict) -> dict:
     base_url = os.environ.get("OPENAI_BASE_URL") or cfg_ai.get("base_url") or ""
     api_key = os.environ.get("OPENAI_API_KEY") or cfg_ai.get("api_key") or ""
     model = os.environ.get("OPENAI_MODEL") or cfg_ai.get("model") or ""
+    # 自動生效：base_url 與 model 齊備即啟用；
+    # 僅在 config 明確設 "enabled": false 時才強制關閉（api_key 選配，本地端點可免）
+    enabled = cfg_ai.get("enabled", True) and bool(base_url) and bool(model)
     return {
-        "enabled": bool(cfg_ai.get("enabled")) and bool(base_url) and bool(model),
+        "enabled": bool(enabled),
         "base_url": base_url.rstrip("/"),
         "api_key": api_key,
         "model": model,

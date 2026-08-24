@@ -290,18 +290,18 @@ python3 pipeline_screener.py --dry-run          # 驗證設定，不發網路請
 
 Top5 清單最後一欄「AI評估」可由 LLM 做風控覆核（不得更改分級，僅 ≤80 字觀察）。設定 `config_pipeline.json` 的 `ai_review` 區塊：
 
+**自動啟用**：環境變數 `OPENAI_API_KEY`／`OPENAI_BASE_URL`／`OPENAI_MODEL` 三個齊備即生效（本地端點可不設 API key），無需改設定檔。選配項：
+
 ```jsonc
+// config_pipeline.json 的 ai_review 區塊（全部可省略）
 "ai_review": {
-  "enabled": true,
-  "base_url": "https://api.openai.com/v1",   // 本地 Qwen 例：http://localhost:11434/v1
-  "model": "gpt-4o-mini",                     // 本地例：qwen2.5:14b
+  // "enabled": false,          // 明確設 false 可強制關閉
+  // "base_url": "...",         // 環境變數未設時的備用
+  // "model": "...",
   "temperature": 0.2,
   "system_prompt": "你現在是一名資深台股量化投資分析師……"
 }
 ```
-
-金鑰與端點走環境變數：`OPENAI_API_KEY`／`OPENAI_BASE_URL`／`OPENAI_MODEL`
-（皆可覆蓋 config 設定；雲端與本地 Qwen 端點通吃）。
 
 ### 診斷
 
