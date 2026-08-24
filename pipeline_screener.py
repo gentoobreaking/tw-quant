@@ -170,16 +170,43 @@ def main(argv: Optional[list] = None) -> int:
     rate_limiter = make_rate_limiter(cfg)
     cache = DiskCache(str(CACHE_PATH), ttl=7200)
 
-    universe = stage0_universe(cfg, cache, rate_limiter,
-                               rebuild=args.rebuild_universe)
-    logger.info("stage0 完成：股票池 %d 檔", len(universe))
+    from common.finmind import FinMindClient, get_stats, reset_stats
+    from common.grading import apply_hard_rejects, build_top5, grade_signals
+    from common.scorer import run_scoring, write_reports
 
-    scored = stage1_scoring(universe, cfg, cache)
-    logger.info("stage1 完成：%d 檔已評分", len(scored))
+    reset_stats()
+    finmind = FinMindClient(token=cfg.get("finmind_token") or None,
+                            rate_limiter=rate_limiter)
 
-    final = stage2_grading(scored, cfg)
-    logger.info("stage2 完成：%d 檔進入最終清單", len(final))
+    try:
+        logger.info("── Stage 0：股票池建構 ──")
+        universe = stage0_universe(cfg, cache, rate_limiter,
+                                   rebuild=args.rebuild_universe)
+        logger.info("stage0 完成：股票池 %d 檔", len(universe))
 
+        logger.info("── Stage 1：100 分量化評分 ──")
+        full, top10, details = run_scoring(
+            universe, cfg, cache,
+            rate_limiter=rate_limiter, finmind=finmind)
+        logger.info("stage1 完成：%d 檔已評分", len(full))
+
+        logger.info("── Stage 2：硬淘汰＋S/A/B 分級 ──")
+        passed, rejected = apply_hard_rejects(top10)
+        graded = grade_signals(passed, cfg["rr_thresholds"])
+        top5 = build_top5(graded, top_n=5)
+        logger.info("stage2 完成：%d 檔通過淘汰，最終 %d 檔",
+                    len(passed), len(top5))
+
+        md_path, *_ = write_reports(full, top10, details,
+                                    rejected=rejected,
+                                    stats=get_stats(), top5=top5)
+        logger.info("完成！報表：%s", md_path)
+    except Exception as e:  # noqa: BLE001
+        logger.error("管線執行失敗：%s", e)
+        cache.close()
+        return 1
+
+    finmind.close()
     cache.close()
     return 0
 

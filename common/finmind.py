@@ -52,13 +52,15 @@ class FinMindClient:
         if dataset not in SUPPORTED_DATASETS:
             logger.debug("FinMind dataset %s 不在白名單，仍嘗試查詢", dataset)
 
-        params: dict = {"dataset": dataset}
+        # FinMind 要求 start_date 必填；未提供時預設兩年內
+        if not start_date:
+            start_date = (time.strftime("%Y-%m-%d",
+                          time.localtime(time.time() - 63072000)))
+        params: dict = {"dataset": dataset, "start_date": start_date}
         if self._token:
             params["token"] = self._token
         if data_id:
             params["data_id"] = data_id
-        if start_date:
-            params["start_date"] = start_date
         if end_date:
             params["end_date"] = end_date
 
@@ -113,6 +115,18 @@ class FinMindClient:
         self._session.close()
 
 
+STATS = {"primary": 0, "finmind": 0, "failures": 0}
+
+
+def get_stats() -> dict:
+    """回傳資料源使用統計（供報表輸出）"""
+    return dict(STATS)
+
+
+def reset_stats():
+    STATS.update({"primary": 0, "finmind": 0, "failures": 0})
+
+
 def with_fallback(primary_fn: Callable[[], list],
                   fallback_fn: Callable[[], list],
                   label: str = "") -> tuple[list, str]:
@@ -124,10 +138,15 @@ def with_fallback(primary_fn: Callable[[], list],
     try:
         data = primary_fn()
         if data:
+            STATS["primary"] += 1
             return data, "primary"
         logger.info("%s 主路徑回空值，FinMind 備援啟用", label or "查詢")
     except Exception as e:  # noqa: BLE001 —— 備援設計本意就是吞掉主路徑任何失敗
         logger.info("%s 主路徑失敗（%s），FinMind 備援啟用",
                     label or "查詢", str(e)[:80])
     data = fallback_fn()
+    if data:
+        STATS["finmind"] += 1
+    else:
+        STATS["failures"] += 1
     return data, "finmind"

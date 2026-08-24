@@ -20,4 +20,4 @@ colorama>=0.4
 tqdm>=4.60
 
 # 測試
-pytest>=7.0
+pytest>=7.0tabulate

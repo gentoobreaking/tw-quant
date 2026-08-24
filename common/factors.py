@@ -11,13 +11,21 @@ import pandas as pd
 from .logger import logger
 
 
+def _suffixed(ticker: str) -> str:
+    """純數字代號補上 yfinance 交易所尾碼"""
+    if "." in ticker or not ticker.isdigit():
+        return ticker
+    from .yf_utils import get_exchange
+    return f"{ticker}.{get_exchange(ticker)}"
+
+
 def _default_provider(ticker: str) -> dict:
     """從 yfinance 抓取預估數據（可注入替換以便測試）"""
     import warnings
     warnings.filterwarnings("ignore")
     import yfinance as yf
 
-    t = yf.Ticker(ticker)
+    t = yf.Ticker(_suffixed(ticker))
     return {
         "earnings_estimate": t.get_earnings_estimate(),
         "eps_trend": t.get_eps_trend(),
@@ -338,7 +346,7 @@ def _default_roe(ticker: str) -> Optional[float]:
     import warnings
     warnings.filterwarnings("ignore")
     import yfinance as yf
-    v = yf.Ticker(ticker).get_info().get("returnOnEquity")
+    v = yf.Ticker(_suffixed(ticker)).get_info().get("returnOnEquity")
     return float(v) if v is not None else None
 
 
@@ -477,7 +485,7 @@ def _default_history(ticker: str, period: str = "1y") -> pd.DataFrame:
     import warnings
     warnings.filterwarnings("ignore")
     import yfinance as yf
-    df = yf.download(ticker, period=period, interval="1d",
+    df = yf.download(_suffixed(ticker), period=period, interval="1d",
                      auto_adjust=False, progress=False)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)

@@ -224,3 +224,27 @@ python3 etf_top10_holdings.py
 
 ## 授權
 Apache License 2.0. 僅供研究用途，投資請謹慎評估風險。
+
+---
+
+## 找買點管線（pipeline_screener.py，T003）
+
+三段式漏斗：ETF 成分股股票池 → 100 分量化評分 → 硬淘汰＋S/A/B 分級 → Top5。
+
+```bash
+# 完整流程（首次約 10~20 分鐘）
+python3 pipeline_screener.py
+
+# 強制重建股票池 / 指定 Top N / 驗證設定
+python3 pipeline_screener.py --rebuild-universe
+python3 pipeline_screener.py --top 10
+python3 pipeline_screener.py --dry-run
+```
+
+- **資料源**：yfinance（券商共識 EPS 預估——唯一免費源）＋ TWSE Open API ＋ TDCC；
+  FinMind REST 為備援（token 填 `config_pipeline.json` 的 `finmind_token`）
+- **輸出**：`screening_results/pipeline_YYYYMMDD.md`（Top5 買點表／兩份 100 分量化表／
+  淘汰名單／資料源統計／欄位計算說明稽核附錄）＋ full/top10/detail 三份 CSV
+- **股票池**：`config_pipeline.json` 的 `etf_candidates` 排名取前五（近三年純價格報酬，
+  不含配息），成分股去重後標記 MoneyDJ 產業別，快取於 `data/universe.csv`
+- **規格與演算法**：`~/tasks/tw-quant/spec.md` 與 `algs/*.md`
