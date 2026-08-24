@@ -202,18 +202,20 @@ def annotate_signals(scored_full: pd.DataFrame,
 
     passed, rejected = apply_hard_rejects(scored_full)
     graded = grade_signals(passed, rr_thresholds)
+    graded["訊號"] = graded["grade"].map(SIGNAL_LABELS)
     if not rejected.empty:
         rej = rejected.copy()
         rej["grade"] = "R"
+        rej["訊號"] = SIGNAL_LABELS["R"]
         combined = pd.concat([graded, rej], ignore_index=True)
     else:
         combined = graded
-
-    combined["訊號"] = combined["grade"].map(SIGNAL_LABELS)
     # 排序：非淘汰按 total 降序在前，淘汰墊底
     combined["_dead"] = (combined["grade"] == "R").astype(int)
     combined = combined.sort_values(["_dead", "total"],
                                     ascending=[True, False]).reset_index(drop=True)
     combined = combined.drop(columns=["_dead"])
+    first_g = ["訊號"] + [c for c in graded.columns if c != "訊號"]
+    graded = graded[first_g]
     first = ["訊號"] + [c for c in combined.columns if c != "訊號"]
     return combined[first], graded
