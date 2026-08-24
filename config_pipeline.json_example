@@ -18,7 +18,7 @@
     "s": 2.0,
     "a": 1.5
   },
-  "finmind_token": "***REDACTED***",
+  "finmind_token": "",
   "rate_limit": {
     "moneydj": {"delay": 2.0, "jitter": 0.5},
     "finmind": {"delay": 0.7, "jitter": 0.3},

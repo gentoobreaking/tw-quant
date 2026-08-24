@@ -40,3 +40,5 @@ screening_results/
 
 # 沙箱／代理工具設定
 .pi/
+
+config_pipeline.json

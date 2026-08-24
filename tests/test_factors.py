@@ -1,4 +1,6 @@
 """T008 單元測試 — 因子②計分（fixture：2026-08-25 台積電 Yahoo 實抓值）"""
+from unittest.mock import MagicMock
+
 import pandas as pd
 import pytest
 
@@ -89,3 +91,64 @@ def test_boundary_bands():
     assert r["_sub"]["rev_3m"] == 8        # +10.00%
     assert r["_sub"]["revisions"] == 2     # up==down → 2 分
     assert r["_sub"]["industry_rel"] == 0  # 相等不給分
+
+
+# ---- T014 增補：成功才快取、失敗下次回補 ----
+def test_cache_backfill_incomplete_not_cached():
+    calls = {"n": 0}
+    cache = MagicMock()
+    store = {}
+    cache.get.side_effect = lambda key, fn, ttl=None, skip_none=False: (
+        store.get(key))
+
+    def fake_save(key, entry):
+        pass
+    # 模擬 DiskCache：skip_none=True 時 None 不入快取
+    def get_impl(key, fn, ttl=None, skip_none=False):
+        val = store.get(key)
+        if val is not None:
+            return val
+        val = fn()
+        if not (val is None and skip_none):
+            store[key] = val
+        return val
+    cache.get.side_effect = get_impl
+
+    def provider(t):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            # 第一次：抓取失敗（無覆蓋）→ _complete=False
+            return {"earnings_estimate": make_ee({"0y": {"avg": 5.0,
+                    "numberOfAnalysts": 1}})}
+        # 第二次：資料回來了
+        return make_provider(EE, TREND, REVISIONS, GROWTH, TARGETS)(t)
+
+    r1 = score_eps_revision("2330.TW", cache=cache, provider=provider)
+    assert r1["_complete"] is False and r1["f2"] == 0
+
+    r2 = score_eps_revision("2330.TW", cache=cache, provider=provider)
+    assert r2["_complete"] is True          # 第二次執行有回補
+    assert r2["f2"] > 0
+
+
+def test_cache_complete_is_cached():
+    calls = {"n": 0}
+    store = {}
+    cache = MagicMock()
+    def get_impl(key, fn, ttl=None, skip_none=False):
+        val = store.get(key)
+        if val is not None:
+            return val
+        val = fn()
+        if not (val is None and skip_none):
+            store[key] = val
+        return val
+    cache.get.side_effect = get_impl
+
+    def provider(t):
+        calls["n"] += 1
+        return make_provider(EE, TREND, REVISIONS, GROWTH, TARGETS)(t)
+
+    score_eps_revision("2330.TW", cache=cache, provider=provider)
+    score_eps_revision("2330.TW", cache=cache, provider=provider)   # 走快取
+    assert calls["n"] == 1               # 完整資料只抓一次

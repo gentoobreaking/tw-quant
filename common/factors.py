@@ -19,6 +19,42 @@ def _suffixed(ticker: str) -> str:
     return f"{ticker}.{get_exchange(ticker)}"
 
 
+def _mark_fallback(source: str):
+    """備援啟用時累計統計（供報表資料源統計）"""
+    try:
+        from .finmind import STATS
+        STATS[source if source in STATS else "failures"] += 1
+    except Exception:
+        pass
+
+
+def cached_factor(cache, key: str, ttl: int,
+                  compute_fn: Callable[[], dict]) -> dict:
+    """成功才快取、失敗下次回補的包裝。
+
+    compute_fn 回傳 dict 需含 "_complete": bool。
+    - 完整：正常 TTL 快取
+    - 不完整（資料缺失/抓取失敗）：不入快取，本次仍回傳結果，
+      下次執行自動重試回補
+    """
+    if cache is None:
+        return compute_fn()
+    holder: dict = {}
+
+    def _fetch():
+        r = compute_fn()
+        holder["r"] = r
+        return r if r.get("_complete") else None   # None → 不入快取
+
+    got = cache.get(key, _fetch, ttl=ttl, skip_none=True)
+    if got is not None and isinstance(got, dict):
+        return got
+    result = holder.get("r")
+    if result is None:
+        result = compute_fn()
+    return result
+
+
 def _default_provider(ticker: str) -> dict:
     """從 yfinance 抓取預估數據（可注入替換以便測試）"""
     import warnings
@@ -163,11 +199,10 @@ def score_eps_revision(ticker: str, cache=None,
             "analysts": analysts,
             "note": "",
             "_sub": sub,
+            "_complete": analysts >= 3 and rev_1m is not None,
         }
 
-    if cache is not None:
-        return cache.get(f"pipeline_eps_{ticker}", compute, ttl=86400)
-    return compute()
+    return cached_factor(cache, f"pipeline_eps_{ticker}", 86400, compute)
 
 
 def _no_coverage(reason: str) -> dict:
@@ -177,6 +212,7 @@ def _no_coverage(reason: str) -> dict:
         "rev_1m": None, "rev_3m": None, "target_mean": None,
         "up30d": None, "down30d": None,
         "analysts": 0, "note": f"無覆蓋（{reason}）", "_sub": {},
+        "_complete": False,
     }
 
 
@@ -276,8 +312,10 @@ def score_fundamentals(ticker: str, *, cache=None, rate_limiter=None,
         if rev_yoy is None and finmind is not None:
             try:
                 rev_yoy = _rev_yoy_finmind(finmind, ticker)
+                _mark_fallback("finmind" if rev_yoy is not None else "failures")
             except Exception as e:  # noqa: BLE001
                 logger.debug("FinMind 營收失敗：%s", e)
+                _mark_fallback("failures")
         s2 = _grade(rev_yoy or -999, [(20, 6), (10, 4), (0, 2)])
         sub["rev_yoy"] = s2
 
@@ -340,16 +378,17 @@ def score_fundamentals(ticker: str, *, cache=None, rate_limiter=None,
         sub["fcf"] = s5
 
         f1 = min(s1 + s2 + s3 + s4 + s5, 25)
+        complete = (rev_yoy is not None and roe is not None
+                    and gm_q is not None)
         return {
             "f1": f1, "_sub": sub,
             "eps_growth_2026": g26, "rev_yoy_3m": rev_yoy,
             "roe": roe, "gross_margin_q": gm_q,
             "gross_margin_delta": gm_delta, "fcf_positive": fcf_positive,
+            "_complete": complete,
         }
 
-    if cache is not None:
-        return cache.get(f"pipeline_fund_{ticker}", compute, ttl=43200)
-    return compute()
+    return cached_factor(cache, f"pipeline_fund_{ticker}", 43200, compute)
 
 
 def _default_roe(ticker: str) -> Optional[float]:
@@ -424,6 +463,7 @@ def score_chips(ticker: str, *, cache=None, rate_limiter=None,
             foreign_20d, trust_20d = sums["foreign_20d"], sums["trust_20d"]
         elif finmind is not None:
             logger.info("籌碼主路徑無資料，FinMind 備援啟用（%s）", ticker)
+            _mark_fallback("finmind")
             rows = finmind.fetch_dataset(
                 "TaiwanStockInstitutionalInvestorsBuySell", ticker)
             # 長表：date, name(投資人別), buy, sell
@@ -486,14 +526,14 @@ def score_chips(ticker: str, *, cache=None, rate_limiter=None,
             s = 2 if holding_up else 0
             sub["foreign_holding"] = s; f3 += s
 
+        complete = foreign_20d is not None
         return {"f3": min(int(f3), 20), "_sub": sub,
                 "foreign_5d": foreign_5d, "trust_5d": trust_5d,
                 "foreign_20d": foreign_20d, "trust_20d": trust_20d,
-                "foreign_holding_up": holding_up}
+                "foreign_holding_up": holding_up,
+                "_complete": complete}
 
-    if cache is not None:
-        return cache.get(f"pipeline_chips_{ticker}", compute, ttl=43200)
-    return compute()
+    return cached_factor(cache, f"pipeline_chips_{ticker}", 43200, compute)
 
 
 # ================================================================
@@ -613,11 +653,10 @@ def score_momentum(ticker: str, *, cache=None,
             "high_60d": round(float(df["Close"].iloc[-61:].max()), 2),
             "launch_low": launch_low,
             "ma20_up": ma20_up,
+            "_complete": True,
         }
 
-    if cache is not None:
-        return cache.get(f"pipeline_mom_{ticker}", compute, ttl=43200)
-    return compute()
+    return cached_factor(cache, f"pipeline_mom_{ticker}", 43200, compute)
 
 
 def _default_index() -> pd.DataFrame:
@@ -672,8 +711,7 @@ def score_position(ticker: str, *, cache=None,
         return {"f5": int(f5), "_sub": {k: bool(v) for k, v in s.items()},
                 "dd60_pct": round(float(dd60), 2),
                 "dd120_pct": round(float(dd120), 2),
-                "pos_52w": round(float(pos), 3)}
+                "pos_52w": round(float(pos), 3),
+                "_complete": True}
 
-    if cache is not None:
-        return cache.get(f"pipeline_pos_{ticker}", compute, ttl=43200)
-    return compute()
+    return cached_factor(cache, f"pipeline_pos_{ticker}", 43200, compute)

@@ -146,10 +146,10 @@ def test_annotate_signals_full_coverage():
                                          {"s": 2.0, "a": 1.5})
     assert list(annotated.columns)[:1] == ["訊號"]
     sig = dict(zip(annotated.ticker, annotated["訊號"]))
-    assert sig["2000"] == "🟢S級:研究進場"
-    assert sig["2001"] == "🟡A級:等待買點"
-    assert sig["2002"] == "🟠B級:基本面好&股價偏高"
-    assert sig["2003"] == "🔴淘汰:淘汰"
+    assert sig["2000"] == "🟢研究進場"
+    assert sig["2001"] == "🟡等待買點"
+    assert sig["2002"] == "🟠股價過高"
+    assert sig["2003"] == "🔴淘汰"
     # 淘汰墊底
     assert annotated.iloc[-1]["ticker"] == "2003"
     assert len(passed) == 3
