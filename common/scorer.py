@@ -116,6 +116,7 @@ def run_scoring(universe: pd.DataFrame, cfg: dict, cache,
             "stop_loss": tgt["stop_loss"],
             "target_price": tgt["target_price"], "rr": tgt["rr"],
             "target_note": tgt["target_note"],
+            "entry_note": tgt.get("note", ""),
         }
         rows.append(row)
         # 稽核明細：原始數值＋子項得分（欄位順序＝FORMULA_TABLE）
@@ -188,12 +189,32 @@ def write_reports(full: pd.DataFrame, top10: pd.DataFrame,
                 "dist_60d_high", "ma20", "ma60", "close",
                 "entry_low", "entry_high", "stop_loss", "target_price", "rr"]
 
+        def display_view(df: pd.DataFrame) -> pd.DataFrame:
+            """報表顯示轉換：NaN 改為有意義的文字（原始 CSV 保持數值）"""
+            disp = df.copy()
+            if "rejected_rules" in disp.columns:
+                disp["rejected_rules"] = disp["rejected_rules"].fillna("✓ 未觸發")
+            if "note" in disp.columns:
+                disp["note"] = disp["note"].fillna("")
+            if "entry_note" in disp.columns:
+                reason = disp["entry_note"].fillna("")
+                reason = reason.replace("", "—")
+            else:
+                reason = pd.Series("—", index=disp.index)
+            for col in ("entry_low", "entry_high", "stop_loss",
+                        "target_price", "rr"):
+                if col in disp.columns:
+                    disp[col] = disp[col].where(disp[col].notna(), reason)
+            return disp
+
         def table(df, title):
             f.write(f"\n## {title}\n\n")
-            use = [c for c in FULL_COLUMNS if c in df.columns]
-            if "訊號" in df.columns:
+            disp = display_view(df)
+            use = [c for c in FULL_COLUMNS if c in disp.columns]
+            use += [c for c in ("note",) if c in disp.columns]
+            if "訊號" in disp.columns:
                 use = ["訊號"] + [c for c in use if c != "訊號"]
-            f.write(df[use].to_markdown(index=False))
+            f.write(disp[use].to_markdown(index=False))
             f.write("\n")
 
         f.write(f"# 找買點量化表 {today}\n")
