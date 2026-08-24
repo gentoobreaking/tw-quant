@@ -228,11 +228,6 @@ python3 etf_top10_holdings.py
 
 ---
 
-## 授權
-Apache License 2.0. 僅供研究用途，投資請謹慎評估風險。
-
----
-
 ## 找買點管線（pipeline_screener.py）
 
 三段式漏斗：**ETF 成分股股票池 → 100 分量化評分 → 硬淘汰＋S/A/B 分級 → Top5 買點清單**。
@@ -317,3 +312,19 @@ python3 scripts/check_data_sources.py   # 一鍵檢查全部 6 個資料源連�
 ### 規格與演算法
 
 `~/tasks/tw-quant/spec.md` 與 `algs/*.md`（stage0-universe／factor-scoring／entry-stop-target／signal-grading）
+
+---
+## License
+
+本專案採用 **Apache License 2.0** 授權。
+
+- 完整授權條款見 [`LICENSE`](LICENSE)（專案根目錄）
+- Apache-2.0 官方條款：<https://www.apache.org/licenses/LICENSE-2.0>
+- 版權與貢獻者資訊以 LICENSE 檔案為準
+
+> 本專案為研究/模擬用途，授權條款不構成任何投資建議或保證；
+> 使用/修改/再散佈前請詳閱 LICENSE 全文。
+
+本專案僅供個人量化研究與教育用途。資料來源（FinMind、TWSE、TPEX）之使用請遵守各平台之服務條款。
+
+Proprietary - All rights reserved.
