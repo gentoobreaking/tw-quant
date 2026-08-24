@@ -128,7 +128,7 @@ def test_build_top5_order_and_conclusion():
     top5 = build_top5(graded)
     assert list(top5.ticker) == ["2000", "2001", "2002", "2003"]
     assert top5.iloc[0]["conclusion"].startswith("EPS上修＋法人轉買")
-    assert top5.iloc[3]["conclusion"] == "條件不足，暫不列入"
+    assert top5.iloc[3]["conclusion"] == "量化條件未達標，暫不列入"
 
 
 # ---- annotate_signals：全量標註含淘汰 ----
