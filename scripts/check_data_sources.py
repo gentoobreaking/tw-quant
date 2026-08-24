@@ -165,7 +165,9 @@ CHECKS = [
      "大戶持股"),
 ]
 
-SYMBOL = {True: "✅ 可用", False: "❌ 失敗"}
+# 註：狀態用純 ASCII 標記——emoji 在不同終端機寬度不一（1 或 2 格），
+# 會造成框線對不齊；若偏好 emoji 版本可改回 "✅ 可用"/"❌ 失敗"
+SYMBOL = {True: "[OK]", False: "[NG]"}
 
 
 class _CollectHandler(logging.Handler):
@@ -205,6 +207,7 @@ def main() -> int:
     headers = ["資料源", "結果", "用途"]
     rows = [[name, f"{SYMBOL[ok]} {summary}".strip(), purpose]
             for _, name, ok, summary, _, purpose in results]
+    # 失敗列整列以 ! 標頭提示（純文字、不影響對齊）
     print(render_box(headers, rows))
 
     # ---- 結論 ----
