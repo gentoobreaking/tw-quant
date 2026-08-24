@@ -35,6 +35,31 @@ logger = setup_logger("pipeline")
 
 
 # ---------------------------------------------------------------- config
+SECRETS_PATH = BASE_DIR / "config_secrets.json"
+
+
+def _load_secrets(cfg: dict) -> dict:
+    """合併機密設定：環境變數 > config_secrets.json > 主檔既有值
+
+    finmind_token / ai_review.api_key 屬機密，
+    config_pipeline.json 中應保持空字串。
+    """
+    import os
+    secrets_path = Path(SECRETS_PATH)
+    if secrets_path.exists():
+        with open(secrets_path, encoding="utf-8") as f:
+            secrets = json.load(f)
+        for k, v in secrets.items():
+            if isinstance(v, dict):   # 如 ai_review.api_key 巢狀
+                cfg.setdefault(k, {}).update(v)
+            else:
+                cfg[k] = v
+    # 環境變數最高優先
+    if os.environ.get("FINMIND_TOKEN"):
+        cfg["finmind_token"] = os.environ["FINMIND_TOKEN"]
+    return cfg
+
+
 def load_config(path: Path = CONFIG_PATH) -> dict:
     with open(path, encoding="utf-8") as f:
         cfg = json.load(f)
@@ -42,7 +67,7 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
                 "rr_thresholds", "rate_limit"):
         if key not in cfg:
             raise KeyError(f"config_pipeline.json 缺少必要鍵: {key}")
-    return cfg
+    return _load_secrets(cfg)
 
 
 def make_rate_limiter(cfg: dict):

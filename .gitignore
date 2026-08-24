@@ -42,3 +42,6 @@ screening_results/
 .pi/
 
 config_pipeline.json
+
+# 機密設定（token／API key）——絕不進版控
+config_secrets.json

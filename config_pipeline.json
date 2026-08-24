@@ -1,15 +1,51 @@
 {
   "_comment": "找買點管線設定（T004）— etf_candidates 可隨時調整，排名取前 top_n_etf",
   "etf_candidates": [
-    {"ticker": "0050.TW", "name": "元大台灣50", "category": "市值型"},
-    {"ticker": "006208.TW", "name": "富邦台灣50", "category": "市值型"},
-    {"ticker": "00850.TW", "name": "國泰台灣領袖50", "category": "市值型"},
-    {"ticker": "00692.TW", "name": "富邦公司治理", "category": "市值型"},
-    {"ticker": "0056.TW", "name": "元大高股息", "category": "高股息"},
-    {"ticker": "00878.TW", "name": "國泰永續高股息", "category": "高股息"},
-    {"ticker": "00919.TW", "name": "群益台灣精選高息", "category": "高股息"},
-    {"ticker": "00929.TW", "name": "復華台灣科技優息", "category": "高股息"},
-    {"ticker": "00713.TW", "name": "元大台灣高息低波", "category": "高股息"}
+    {
+      "ticker": "0050.TW",
+      "name": "元大台灣50",
+      "category": "市值型"
+    },
+    {
+      "ticker": "006208.TW",
+      "name": "富邦台灣50",
+      "category": "市值型"
+    },
+    {
+      "ticker": "00850.TW",
+      "name": "國泰台灣領袖50",
+      "category": "市值型"
+    },
+    {
+      "ticker": "00692.TW",
+      "name": "富邦公司治理",
+      "category": "市值型"
+    },
+    {
+      "ticker": "0056.TW",
+      "name": "元大高股息",
+      "category": "高股息"
+    },
+    {
+      "ticker": "00878.TW",
+      "name": "國泰永續高股息",
+      "category": "高股息"
+    },
+    {
+      "ticker": "00919.TW",
+      "name": "群益台灣精選高息",
+      "category": "高股息"
+    },
+    {
+      "ticker": "00929.TW",
+      "name": "復華台灣科技優息",
+      "category": "高股息"
+    },
+    {
+      "ticker": "00713.TW",
+      "name": "元大台灣高息低波",
+      "category": "高股息"
+    }
   ],
   "top_n_etf": 5,
   "universe_ttl_days": 7,
@@ -18,10 +54,19 @@
     "s": 2.0,
     "a": 1.5
   },
-  "finmind_token": "***REDACTED***",
+  "finmind_token": "",
   "rate_limit": {
-    "moneydj": {"delay": 2.0, "jitter": 0.5},
-    "finmind": {"delay": 0.7, "jitter": 0.3},
-    "yfinance_pipeline": {"delay": 1.0, "jitter": 0.3}
+    "moneydj": {
+      "delay": 2.0,
+      "jitter": 0.5
+    },
+    "finmind": {
+      "delay": 0.7,
+      "jitter": 0.3
+    },
+    "yfinance_pipeline": {
+      "delay": 1.0,
+      "jitter": 0.3
+    }
   }
 }
