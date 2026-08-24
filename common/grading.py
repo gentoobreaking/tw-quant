@@ -114,3 +114,28 @@ def grade_signals(passed: pd.DataFrame, rr_thresholds: dict) -> pd.DataFrame:
         grades.append(grade or "C")
     out["grade"] = grades
     return out
+
+
+# ---- Top5 買點清單（T013）----
+CONCLUSION_TEMPLATES = {
+    "S": "EPS上修＋法人轉買＋低位階＋2027成長，研究進場",
+    "A": "EPS上修＋2027成長，股價低但法人尚未轉買，埋伏等待",
+    "B": "基本面佳但股價已反應，僅列觀察",
+    "C": "條件不足，暫不列入",
+}
+
+
+def build_top5(graded: pd.DataFrame, top_n: int = 5) -> pd.DataFrame:
+    """由分級結果組最終買點清單
+
+    排序權重：S > A > B > C，同級內依 total 降序；取前 top_n。
+    """
+    if graded.empty:
+        return graded.copy()
+    order = {"S": 0, "A": 1, "B": 2, "C": 3}
+    out = graded.copy()
+    out["_g_order"] = out["grade"].map(order).fillna(9)
+    out = out.sort_values(["_g_order", "total"],
+                          ascending=[True, False]).head(top_n)
+    out["conclusion"] = out["grade"].map(CONCLUSION_TEMPLATES)
+    return out.drop(columns=["_g_order"])

@@ -82,3 +82,50 @@ def test_multiple_rules_accumulate():
 def test_empty_frame():
     p, r = apply_hard_rejects(pd.DataFrame())
     assert p.empty and r.empty
+
+
+# ---- T013：S/A/B 分級與 Top5 ----
+from common.grading import build_top5, grade_signals   # noqa: E402
+
+
+def grade_one(**kw):
+    row = base_row(**kw)
+    df = pd.DataFrame([row])
+    return grade_signals(df, {"s": 2.0, "a": 1.5}).iloc[0]["grade"]
+
+
+def test_grade_s():
+    g = grade_one(rr=2.4, f2=27, f3=15, growth_2027=0.25)
+    assert g == "S"
+
+
+def test_grade_a_institution_not_yet():
+    g = grade_one(rr=1.8, f2=20, f3=8, growth_2027=0.18)
+    assert g == "A"
+
+
+def test_grade_b_fallback():
+    # R/R<1.5 強制 B（即使基本面好）
+    g = grade_one(rr=1.2, f2=28, f3=19, growth_2027=0.3)
+    assert g == "B"
+
+
+def test_grade_c_when_below_60():
+    # 條件全不達標（f2<18 且 R/R<1.5 且 total<60）→ C
+    g = grade_one(total=40, f2=10, rr=1.0)
+    assert g == "C"
+
+
+def test_build_top5_order_and_conclusion():
+    rows = [
+        base_row(ticker="2000", rr=2.4, f2=27, f3=15),          # S
+        base_row(ticker="2001", rr=1.8, f2=20, f3=8),           # A
+        base_row(ticker="2002", rr=1.0, total=75),              # B
+        base_row(ticker="2003", total=50),                      # C
+    ]
+    df = pd.DataFrame(rows)
+    graded = grade_signals(df, {"s": 2.0, "a": 1.5})
+    top5 = build_top5(graded)
+    assert list(top5.ticker) == ["2000", "2001", "2002", "2003"]
+    assert top5.iloc[0]["conclusion"].startswith("EPS上修＋法人轉買")
+    assert top5.iloc[3]["conclusion"] == "條件不足，暫不列入"
