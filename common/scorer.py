@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from .grading import GRADE_LEGEND, HARD_RULE_LEGEND, explain_rejected_rules
 from .factors import score_chips, score_eps_revision, score_fundamentals, \
     score_momentum, score_position
 from .targets import compute_targets
@@ -213,12 +214,26 @@ def write_reports(full: pd.DataFrame, top10: pd.DataFrame,
         # 四、淘汰名單
         f.write("\n## 四、淘汰名單（含規則編號）\n\n")
         if rejected is not None and not rejected.empty:
-            ure = [c for c in ("ticker", "name", "rejected_rules", "total")
-                   if c in rejected.columns]
-            f.write(rejected[ure].to_markdown(index=False))
+            rej = rejected.copy()
+            rej["規則"] = rej["rejected_rules"].map(explain_rejected_rules)
+            ure = [c for c in ("ticker", "name", "rejected_rules",
+                               "規則", "total") if c in rej.columns]
+            f.write(rej[ure].to_markdown(index=False))
+            f.write("\n\n**硬淘汰規則：**\n\n")
+            for code in ("H1", "H2", "H3", "H4", "H5"):
+                f.write(f"- {HARD_RULE_LEGEND[code]}\n")
             f.write("\n")
         else:
-            f.write("無淘汰標的。\n")
+            f.write("無淘汰標的。\n\n**硬淘汰規則：**\n\n")
+            for code in ("H1", "H2", "H3", "H4", "H5"):
+                f.write(f"- {HARD_RULE_LEGEND[code]}\n")
+            f.write("\n")
+
+        # 訊號分級定義圖例（接在資料源統計前）
+        f.write("\n## 訊號分級定義\n\n")
+        for code in ("S", "A", "B", "C"):
+            f.write(f"- {GRADE_LEGEND[code]}\n")
+        f.write("\n")
 
         # 五、資料源統計
         st = stats or {}
@@ -229,12 +244,12 @@ def write_reports(full: pd.DataFrame, top10: pd.DataFrame,
 
     # 六、欄位計算說明（稽核附錄——獨立章節，不與表格混排）
     with open(md_path, "a", encoding="utf-8") as f:
-        f.write("\n## 六、欄位計算說明（稽核附錄）\n")
-        f.write("\n### 6-A 公式總表\n\n")
+        f.write("\n## 七、欄位計算說明（稽核附錄）\n")
+        f.write("\n### 7-A 公式總表\n\n")
         f.write("| 欄位 | 公式 | 資料源 |\n|---|---|---|\n")
         for col, formula, src in FORMULA_TABLE:
             f.write(f"| {col} | {formula} | {src} |\n")
-        f.write("\n### 6-B 每檔計算數值（欄位順序與 6-A 對應，原始數值＋子項得分）\n\n")
+        f.write("\n### 7-B 每檔計算數值（欄位順序與 7-A 對應，原始數值＋子項得分）\n\n")
         if details is not None and not details.empty:
             spec_cols = [c for c, _, _ in FORMULA_TABLE if c in details.columns]
             other = [c for c in details.columns if c not in spec_cols

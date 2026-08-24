@@ -9,6 +9,40 @@ import pandas as pd
 from .logger import logger
 
 
+# 硬淘汰規則圖例（報表渲染用）
+HARD_RULE_LEGEND: dict[str, str] = {
+    "H1": "H1：2027 EPS 預估負成長",
+    "H2": "H2：近 3 個月 EPS 大幅下修（>5%）",
+    "H3": "H3：法人持續大幅賣超（外資與投信 20 日同賣）",
+    "H4": "H4：基本面無成長只靠題材（EPS 成長≤0 且營收 YoY≤0）",
+    "H5": "H5：前高極近（≤3%）且 RSI14>70 → 降分 10",
+}
+
+
+def explain_rejected_rules(rules_str: str) -> str:
+    """將 'H1;H5降分' 轉為人類可讀說明（未知的原樣保留）"""
+    if not rules_str or not isinstance(rules_str, str):
+        return ""
+    parts = []
+    for token in rules_str.split(";"):
+        token = token.strip()
+        if not token:
+            continue
+        code = token.split("（")[0].strip()
+        desc = HARD_RULE_LEGEND.get(code)
+        parts.append(desc if desc else token)
+    return "；".join(parts)
+
+
+# 訊號分級定義（報表渲染用）
+GRADE_LEGEND: dict[str, str] = {
+    "S": "S 級：R/R≥2 且 因子②≥24 且 因子③≥14 且 2027 成長>0 —— 研究進場",
+    "A": "A 級：因子②≥18 且 2027 成長>0 且 R/R≥1.5 且 法人尚未轉買 —— 埋伏等待",
+    "B": "B 級：total≥60（含 H5 降分後）—— 基本面佳但股價已反應，列觀察",
+    "C": "C 級：條件不足，暫不列入",
+}
+
+
 def apply_hard_rejects(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """套用 H1–H5；回傳 (通過 DataFrame, 淘汰/降分 DataFrame)
 

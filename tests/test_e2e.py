@@ -50,11 +50,15 @@ def test_write_reports_sections(tmp_path, monkeypatch):
     text = open(md, encoding="utf-8").read()
     for section in ("一、Top5 買點清單", "二、表二：Top10 量化表",
                     "三、表一：全量量化表", "四、淘汰名單",
-                    "五、資料源統計", "六、欄位計算說明"):
+                    "訊號分級定義",
+                    "五、資料源統計", "七、欄位計算說明"):
         assert section in text, f"缺章節 {section}"
     assert "FinMind 備援啟用：8 次" in text
-    assert "H1" in text                      # 淘汰規則編號
-    assert "rev_1m" in text                  # 6-B 子項數值
+    assert "H1：" in text                    # 淘汰規則圖例（人類可讀）
+    assert "規則" in text                     # 淘汰表格含說明欄
+    assert "H1：2027 EPS 預估負成長" in text  # 圖例渲染
+    assert "S 級：" in text                   # 分級定義圖例
+    assert "7-B" in text                     # 子項數值附錄
     assert cf.exists() and c10.exists() and cd.exists()
 
 
