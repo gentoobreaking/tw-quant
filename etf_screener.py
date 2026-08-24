@@ -1316,7 +1316,7 @@ def print_summary(results_raw: list[dict], results_scored: list[ScreeningResult]
 #  主程式
 # ============================================================
 
-def _load_candidates(path: str = "candidates_ETF.csv") -> list[str]:
+def _load_candidates(path: str = "data/candidates_ETF.csv") -> list[str]:
     import csv
     if not os.path.exists(path):
         print(f"  ⚠ 找不到 {path}，使用預設範例")

@@ -34,6 +34,8 @@ import requests
 import twstock
 
 BASE_DIR = Path(__file__).parent
+DATA_DIR = BASE_DIR / "data"
+DATA_DIR.mkdir(exist_ok=True)
 HEADERS  = {"User-Agent": "Mozilla/5.0"}
 TIMEOUT  = 15
 MAX_RETRIES = 3
@@ -237,10 +239,10 @@ def main(check_only: bool = False):
             return {row.get("ticker", "").strip()
                     for row in reader if row.get("ticker", "").strip()}
 
-    old_etf   = read_old(BASE_DIR / "candidates_ETF.csv")
-    old_etn   = read_old(BASE_DIR / "candidates_ETN.csv")
-    old_reat  = read_old(BASE_DIR / "candidates_REAT.csv")
-    old_stock = read_old(BASE_DIR / "candidates.csv")
+    old_etf   = read_old(DATA_DIR / "candidates_ETF.csv")
+    old_etn   = read_old(DATA_DIR / "candidates_ETN.csv")
+    old_reat  = read_old(DATA_DIR / "candidates_REAT.csv")
+    old_stock = read_old(DATA_DIR / "candidates.csv")
 
     if old_etf or old_etn or old_reat:
         diff_report(etf_d, etn_d, reat_d, old_etf, old_etn, old_reat)
@@ -257,10 +259,10 @@ def main(check_only: bool = False):
         write_ticker_csv(path, tickers, extra)
         log.info("  %s: %d 檔 -> %s", path.name, len(tickers), path)
 
-    write_csv(BASE_DIR / "candidates_ETF.csv",   list(etf_d.keys()),   etf_d)
-    write_csv(BASE_DIR / "candidates_ETN.csv",    list(etn_d.keys()),   etn_d)
-    write_csv(BASE_DIR / "candidates_REAT.csv",   list(reat_d.keys()),  reat_d)
-    write_csv(BASE_DIR / "candidates.csv",         stock_tickers,        stock_dict)
+    write_csv(DATA_DIR / "candidates_ETF.csv",   list(etf_d.keys()),   etf_d)
+    write_csv(DATA_DIR / "candidates_ETN.csv",    list(etn_d.keys()),   etn_d)
+    write_csv(DATA_DIR / "candidates_REAT.csv",   list(reat_d.keys()),  reat_d)
+    write_csv(DATA_DIR / "candidates.csv",         stock_tickers,        stock_dict)
 
     log.info("")
     log.info("完成！")

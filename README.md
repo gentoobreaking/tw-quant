@@ -170,7 +170,7 @@ python3 dump_candidates.py --check
 
 | 檔案 | 來源 | 代碼數 |
 |------|------|--------|
-| `candidates.csv` | TWSE t187ap14_L（去除 ETF/ETN/REAT）| ~1,079 |
+| `data/candidates.csv` | TWSE t187ap14_L（去除 ETF/ETN/REAT）| ~1,079 |
 | `candidates_ETF.csv` | TWSE `/rwd/zh/ETF/list`（含 L/R/多幣別）| ~229 |
 | `candidates_ETN.csv` | TWSE `/rwd/zh/ETN/list` | ~15 |
 | `candidates_REAT.csv` | twstock 不動產證券化分類 | ~6 |
@@ -200,10 +200,11 @@ tw-quant/
 │   └── yf_utils.py          # yfinance 批次下載、get_stock_info(4-tier)
 ├── config.json              # 個股篩選參數
 ├── config_etf.json          # ETF 篩選參數
-├── candidates.csv           # 股票候選（TWSE API，~1079 檔）
-├── candidates_ETF.csv       # ETF 候選（TWSE API，~229 檔）
-├── candidates_ETN.csv        # ETN 候選（TWSE API，~15 檔）
-├── candidates_REAT.csv       # REAT 候選（twstock 分類，~6 檔）
+├── data/                    # 候選清單（動態產出，dump_candidates.py 維護）
+│   ├── candidates.csv       # 股票候選（~1079 檔）
+│   ├── candidates_ETF.csv   # ETF 候選（~229 檔）
+│   ├── candidates_ETN.csv   # ETN 候選（~15 檔）
+│   └── candidates_REAT.csv  # REAT 候選（~6 檔）
 ├── etf_top10_holdings.py    # 獨立腳本：快速查詢單檔 ETF 前十持股
 ├── tests/                    # pytest 單元測試（43 tests）
 └── screening_results/        # 篩選結果 CSV（每月一個）

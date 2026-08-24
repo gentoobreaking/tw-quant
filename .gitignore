@@ -21,17 +21,11 @@ error.log
 # 備份
 backups/
 
-# 篩選結果（動態產出，由 dump_candidates.py 維護）
-candidates.csv
-candidates_ETF.csv
-candidates_ETN.csv
-candidates_REAT.csv
+# 候選清單（動態產出，由 dump_candidates.py 維護，輸出至 data/）
+data/
 
-# 舊殘留檔（dump_candidates.py 產生新檔後的舊版）
-candidates_all.csv
-candidates_etf_all.csv
-candidates_etf_test.csv
-candidates.csv.example
+# 外來檔案（非本人擁有，無法刪除）
+tmp/
 
 # 篩選報告（每月動態產出）
 screening_results/
@@ -43,3 +37,6 @@ screening_results/
 .idea/
 .vscode/
 *.swp
+
+# 沙箱／代理工具設定
+.pi/
