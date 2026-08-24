@@ -242,7 +242,11 @@ python3 pipeline_screener.py --dry-run
 ```
 
 - **資料源**：yfinance（券商共識 EPS 預估——唯一免費源）＋ TWSE Open API ＋ TDCC；
-  FinMind REST 為備援（token 填 `config_pipeline.json` 的 `finmind_token`）
+  FinMind REST 為備援
+- **機密設定**：token／API key 放 `config_secrets.json`（gitignored），
+  或以環境變數覆蓋（`FINMIND_TOKEN`、未來 `AI_API_KEY`）；
+  優先序：環境變數 > config_secrets.json > config_pipeline.json
+- **診斷**：`python3 scripts/check_data_sources.py` 一鍵檢查全部資料源連線
 - **輸出**：`screening_results/pipeline_YYYYMMDD.md`（Top5 買點表／兩份 100 分量化表／
   淘汰名單／資料源統計／欄位計算說明稽核附錄）＋ full/top10/detail 三份 CSV
 - **股票池**：`config_pipeline.json` 的 `etf_candidates` 排名取前五（近三年純價格報酬，
