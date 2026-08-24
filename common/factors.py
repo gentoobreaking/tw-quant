@@ -461,7 +461,8 @@ def score_chips(ticker: str, *, cache=None, rate_limiter=None,
             s = 2 if holding_up else 0
             sub["foreign_holding"] = s; f3 += s
 
-        return {"f3": min(int(f3), 20), "_sub": sub}
+        return {"f3": min(int(f3), 20), "_sub": sub,
+                "foreign_20d": foreign_20d, "trust_20d": trust_20d}
 
     if cache is not None:
         return cache.get(f"pipeline_chips_{ticker}", compute, ttl=43200)
@@ -480,7 +481,8 @@ def _default_history(ticker: str, period: str = "1y") -> pd.DataFrame:
                      auto_adjust=False, progress=False)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
-    return df[["Close", "Volume"]]
+    cols = ["Close", "Volume"] + (["Low"] if "Low" in df.columns else [])
+    return df[cols]
 
 
 def _rsi14(closes: pd.Series, period: int = 14) -> Optional[float]:
@@ -505,6 +507,8 @@ def _prepare(history: pd.DataFrame) -> Optional[pd.DataFrame]:
     df = history.copy()
     df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
     df["Volume"] = pd.to_numeric(df.get("Volume"), errors="coerce")
+    if "Low" in df.columns:
+        df["Low"] = pd.to_numeric(df["Low"], errors="coerce")
     df = df.dropna(subset=["Close"]).sort_index()
     if len(df) < 70:
         return None
@@ -560,12 +564,28 @@ def score_momentum(ticker: str, *, cache=None,
         f4 = sum(3 for v in s.values() if v)
         dist_60d_high = round(
             (last["Close"] / df["Close"].iloc[-61:].max() - 1) * 100, 2)
+        # 發動 K：近 10 日內最大量「上漲 K」之最低點（無 Low 或無紅K → 近10日最低）
+        launch_low = None
+        tail10 = df.iloc[-10:]
+        if "Low" in tail10.columns and len(tail10) >= 3:
+            prev_close = tail10["Close"].shift(1)
+            up_bars = tail10[tail10["Close"] > prev_close]
+            if not up_bars.empty:
+                biggest = up_bars["Volume"].idxmax()
+                launch_low = float(tail10.loc[biggest, "Low"])
+            else:
+                launch_low = float(tail10["Low"].min())
+        ma20_up = bool(len(df) >= 25 and df["ma20"].iloc[-1] > df["ma20"].iloc[-6])
         return {
             "f4": int(f4), "_sub": {k: bool(v) for k, v in s.items()},
             "ma20": round(float(last["ma20"]), 2),
             "ma60": round(float(last["ma60"]), 2),
             "dist_60d_high": dist_60d_high,
             "rsi14": _rsi14(df["Close"]),
+            "close": float(last["Close"]),
+            "high_60d": round(float(df["Close"].iloc[-61:].max()), 2),
+            "launch_low": launch_low,
+            "ma20_up": ma20_up,
         }
 
     if cache is not None:
