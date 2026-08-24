@@ -71,7 +71,7 @@
   },
   "ai_review": {
     "_comment": "Top5 AI 質性覆核。base_url 範例：雲端 https://api.openai.com/v1／本地 Qwen http://localhost:11434/v1。api_key 建議放 config_secrets.json 的 ai_review.api_key 或環境變數 OPENAI_API_KEY",
-    "enabled": false,
+    "enabled": true,
     "base_url": "",
     "model": "",
     "temperature": 0.2,
