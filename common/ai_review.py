@@ -105,8 +105,8 @@ def _call_llm(messages: list[dict], ai_cfg: dict,
         if r.status_code == 200:
             return r.json()["choices"][0]["message"]["content"].strip()
         if r.status_code in RETRYABLE:
-            logger.warning("AI 呼叫 HTTP %d（attempt %d/%d），稍後重試",
-                           r.status_code, attempt + 1, attempts)
+            logger.warning("AI 呼叫 HTTP %d（attempt %d/%d），稍後重試：%s",
+                           r.status_code, attempt + 1, attempts, body)
             last_err = f"HTTP {r.status_code}: {body}"
             if attempt < attempts - 1:
                 time.sleep(5 * (attempt + 1))
