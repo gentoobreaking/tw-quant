@@ -13,6 +13,46 @@ from .logger import logger
 
 RESULT_DIR = Path(__file__).resolve().parent.parent / "screening_results"
 
+# 欄位計算說明（稽核附錄）的單一資料源：
+# 6-A 公式總表由此渲染；6-B 明細欄位順序亦以此為準（兩者結構性一致）
+FORMULA_TABLE: list[tuple[str, str, str]] = [
+    # ---- 原始數值 ----
+    ("rev_1m_pct", "(current−30daysAgo)/abs(30daysAgo)×100（0y）",
+     "yfinance eps_trend"),
+    ("rev_3m_pct", "(current−90daysAgo)/abs(90daysAgo)×100（0y）",
+     "yfinance eps_trend"),
+    ("up30d / down30d", "近30日分析師上修/下修人次（0y）",
+     "yfinance eps_revisions"),
+    ("eps_growth_2026", "2026 預估 EPS 成長率", "yfinance earnings_estimate"),
+    ("rev_yoy_3m_avg", "最近 3 個月營收 YoY 平均%", "TWSE t187ap05_L／FinMind 備援"),
+    ("roe", "最近季股東權益報酬率", "yfinance info returnOnEquity／FinMind"),
+    ("gross_margin_q", "最近季毛利率＝毛利額/營收×100", "FinMind FinancialStatements"),
+    ("gross_margin_delta", "毛利率近兩季差異（pct 點）", "同上"),
+    ("fcf_positive", "自由現金流>0（營業現金流−資本支出）", "FinMind CashFlowsStatement"),
+    ("foreign_5d_amt", "外資近 5 交易日淨買超（張）", "TWSE fund/T86／FinMind 備援"),
+    ("foreign_20d_amt", "外資近 20 交易日淨買超（張）", "同上"),
+    ("trust_5d_amt", "投信近 5 交易日淨買超（張）", "同上"),
+    ("trust_20d_amt", "投信近 20 交易日淨買超（張）", "同上"),
+    ("main_force_20d", "主力買賣超＝投信+外資 20 日合計淨買超（張）", "衍生"),
+    ("close / ma20 / ma60", "收盤價、20/60 日均線（未還原日線 rolling）", "yfinance"),
+    ("dist_60d_high_pct", "(close/max60日高−1)×100", "日線"),
+    ("dd60_pct / dd120_pct", "距 60/120 日高回撤 %", "日線"),
+    ("pos_52w", "收盤在 52W 高低區間位置（0=最低,1=最高）", "日線"),
+    ("rsi14", "RSI(14) Wilder 平滑", "日線"),
+    # ---- 子項得分 ----
+    ("eps_growth / rev_yoy / roe / gm_trend / fcf", "因子①五子項得分（10/6/3/2/4，合計25）", "見上"),
+    ("f2_rev_1m / f2_rev_3m / f2_revisions / f2_industry_rel", "因子②四子項得分（12/8/6/4，合計30）", "見上"),
+    ("f3_foreign_5d … f3_foreign_holding", "因子③六子項得分（6/4/4/2/2/2，合計20）", "見上"),
+    ("f4_above_ma20 … f4_relative", "因子④五子項得分（各3分，合計15）", "見上"),
+    ("f5_dd60 … f5_stop_confirm", "因子⑤四子項得分（3/3/2/2，合計10）", "見上"),
+    # ---- 衍生買點欄位 ----
+    ("entry_low / entry_high", "[20MA, 20MA×1.03]；資格=現價>60MA、20MA向上且>60MA排列", "日線 MA"),
+    ("stop_loss", "min(中值×0.93, 發動K棒最低×0.995)；邏輯停損=破60MA+KD死叉", "日線"),
+    ("target_price", "min(60日高, 分析師mean) 取離現價較近者；漲幅<8% 改較遠者", "yfinance price_targets"),
+    ("rr", "(目標價−進場區中值)/(進場區中值−停損)，門檻 S≥2.0/A≥1.5", "衍生"),
+    ("total / 各因子分項", "五因子加總（上限100）", "衍生"),
+]
+
 FULL_COLUMNS = ["ticker", "name", "sector", "total",
                 "eps_2026", "eps_2027", "rev_1m", "rev_3m",
                 "foreign_20d", "main_force_20d",
@@ -77,16 +117,40 @@ def run_scoring(universe: pd.DataFrame, cfg: dict, cache,
             "target_note": tgt["target_note"],
         }
         rows.append(row)
-        # 稽核明細：子項層級
+        # 稽核明細：原始數值＋子項得分（欄位順序＝FORMULA_TABLE）
         detail = {"ticker": t}
-        for k, v in {**fund["_sub"], **{f"f2_{k2}": v2 for k2, v2 in eps["_sub"].items()},
-                     **{f"f3_{k}": v for k, v in chips["_sub"].items()},
-                     **{f"f4_{k}": int(v) if isinstance(v, bool) else v
-                        for k, v in mom["_sub"].items()},
-                     **{f"f5_{k}": int(v) if isinstance(v, bool) else v
-                        for k, v in pos["_sub"].items()}}.items():
-            detail[k] = v
-        detail.update({"total": total})
+        raw = {
+            "rev_1m_pct": eps["rev_1m"], "rev_3m_pct": eps["rev_3m"],
+            "up30d": eps.get("up30d"), "down30d": eps.get("down30d"),
+            "eps_growth_2026": fund.get("eps_growth_2026"),
+            "rev_yoy_3m_avg": fund.get("rev_yoy_3m"),
+            "roe": fund.get("roe"),
+            "gross_margin_q": fund.get("gross_margin_q"),
+            "gross_margin_delta": fund.get("gross_margin_delta"),
+            "fcf_positive": fund.get("fcf_positive"),
+            "foreign_5d_amt": chips.get("foreign_5d"),
+            "foreign_20d_amt": chips.get("foreign_20d"),
+            "trust_5d_amt": chips.get("trust_5d"),
+            "trust_20d_amt": chips.get("trust_20d"),
+            "main_force_20d": row.get("main_force_20d"),
+            "close": mom.get("close"), "ma20": mom.get("ma20"),
+            "ma60": mom.get("ma60"),
+            "dist_60d_high_pct": mom.get("dist_60d_high"),
+            "dd60_pct": pos.get("dd60_pct"), "dd120_pct": pos.get("dd120_pct"),
+            "pos_52w": pos.get("pos_52w"), "rsi14": mom.get("rsi14"),
+            "entry_low": tgt["entry_low"], "entry_high": tgt["entry_high"],
+            "stop_loss": tgt["stop_loss"],
+            "target_price": tgt["target_price"], "rr": tgt["rr"],
+        }
+        detail.update(raw)
+        detail.update({k: v for k, v in fund["_sub"].items()})
+        detail.update({f"f2_{k}": v for k, v in eps["_sub"].items()})
+        detail.update({f"f3_{k}": v for k, v in chips["_sub"].items()})
+        detail.update({f"f4_{k}": int(v) if isinstance(v, bool) else v
+                       for k, v in mom["_sub"].items()})
+        detail.update({f"f5_{k}": int(v) if isinstance(v, bool) else v
+                       for k, v in pos["_sub"].items()})
+        detail["total"] = total
         details.append(detail)
 
         if (i + 1) % 10 == 0:
@@ -168,23 +232,15 @@ def write_reports(full: pd.DataFrame, top10: pd.DataFrame,
         f.write("\n## 六、欄位計算說明（稽核附錄）\n")
         f.write("\n### 6-A 公式總表\n\n")
         f.write("| 欄位 | 公式 | 資料源 |\n|---|---|---|\n")
-        f.write("| total | f1+f2+f3+f4+f5（上限100） | — |\n")
-        f.write("| f1 因子①(25) | EPS成長10＋營收YoY均6＋ROE3＋毛利率趨勢2＋FCF4 | yfinance/TWSE/FinMind |\n")
-        f.write("| f2 因子②(30) | 1M上修12＋3M上修8＋revisions動能6＋相對產業4 | yfinance eps_trend/revisions/growth_estimates |\n")
-        f.write("| rev_1m | (current−30daysAgo)/abs(30daysAgo)×100 | yfinance eps_trend |\n")
-        f.write("| rev_3m | (current−90daysAgo)/abs(90daysAgo)×100 | 同上 |\n")
-        f.write("| f3 因子③(20) | 外資5日6+外資20日4+投信5日4+投信20日2+同向2+外資持股變化2 | TWSE fund/T86／FinMind 備援 |\n")
-        f.write("| main_force_20d | 近20日投信+外資合計淨買超張數 | 同上 |\n")
-        f.write("| f4 因子④(15) | >20MA3+MA20上彎3+金叉/排列3+量能3+相對大盤3 | 日線（未還原） |\n")
-        f.write("| dist_60d_high | (close/max60日高−1)×100 | 日線 |\n")
-        f.write("| f5 因子⑤(10) | 距60日高回撤≥5%→3+距120日高≥8%→3+52W下半部2+止跌確認2 | 日線 |\n")
-        f.write("| entry_low/high | [20MA, 20MA×1.03]；資格：現價>60MA>條件見 algs/entry-stop-target.md | 日線 MA |\n")
-        f.write("| stop_loss | min(中值×0.93, 發動K最低×0.995)；邏輯停損=破60MA+KD死叉 | 日線 |\n")
-        f.write("| target_price | min(近60日高, 分析師mean) 取離現價較近者；<8% 改較遠者 | yfinance price_targets |\n")
-        f.write("| rr | (目標價−中值)/(中值−停損)，門檻 S=2.0/A=1.5 | 衍生 |\n")
-        f.write("\n### 6-B 每檔計算數值（子項層級）\n\n")
+        for col, formula, src in FORMULA_TABLE:
+            f.write(f"| {col} | {formula} | {src} |\n")
+        f.write("\n### 6-B 每檔計算數值（欄位順序與 6-A 對應，原始數值＋子項得分）\n\n")
         if details is not None and not details.empty:
-            f.write(details.to_markdown(index=False))
+            spec_cols = [c for c, _, _ in FORMULA_TABLE if c in details.columns]
+            other = [c for c in details.columns if c not in spec_cols
+                     and c != "ticker"]
+            f.write(details[["ticker"] + spec_cols + other].to_markdown(
+                index=False))
             f.write("\n")
         else:
             f.write("無明細。\n")

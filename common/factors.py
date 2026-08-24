@@ -103,15 +103,16 @@ def score_eps_revision(ticker: str, cache=None,
 
         # 子項3：上修/下修動能（6 分）
         s3 = 0
+        up30 = down30 = None
         try:
             rrow = revisions.loc["0y"]
-            up = int(rrow.get("upLast30days") or 0)
-            down = int(rrow.get("downLast30days") or 0)
-            if up >= down and up >= 5:
+            up30 = int(rrow.get("upLast30days") or 0)
+            down30 = int(rrow.get("downLast30days") or 0)
+            if up30 >= down30 and up30 >= 5:
                 s3 = 6
-            elif up > down:
+            elif up30 > down30:
                 s3 = 4
-            elif up == down:
+            elif up30 == down30:
                 s3 = 2
             sub["revisions"] = s3
             f2 += s3
@@ -158,6 +159,7 @@ def score_eps_revision(ticker: str, cache=None,
             "rev_1m": rev_1m,
             "rev_3m": rev_3m,
             "target_mean": target_mean,
+            "up30d": up30, "down30d": down30,
             "analysts": analysts,
             "note": "",
             "_sub": sub,
@@ -173,6 +175,7 @@ def _no_coverage(reason: str) -> dict:
         "f2": 0, "eps_2026": None, "eps_2027": None,
         "growth_2026": None, "growth_2027": None,
         "rev_1m": None, "rev_3m": None, "target_mean": None,
+        "up30d": None, "down30d": None,
         "analysts": 0, "note": f"無覆蓋（{reason}）", "_sub": {},
     }
 
@@ -334,7 +337,7 @@ def score_fundamentals(ticker: str, *, cache=None, rate_limiter=None,
             "f1": f1, "_sub": sub,
             "eps_growth_2026": g26, "rev_yoy_3m": rev_yoy,
             "roe": roe, "gross_margin_q": gm_q,
-            "gross_margin_delta": gm_delta,
+            "gross_margin_delta": gm_delta, "fcf_positive": fcf_positive,
         }
 
     if cache is not None:
@@ -470,7 +473,9 @@ def score_chips(ticker: str, *, cache=None, rate_limiter=None,
             sub["foreign_holding"] = s; f3 += s
 
         return {"f3": min(int(f3), 20), "_sub": sub,
-                "foreign_20d": foreign_20d, "trust_20d": trust_20d}
+                "foreign_5d": foreign_5d, "trust_5d": trust_5d,
+                "foreign_20d": foreign_20d, "trust_20d": trust_20d,
+                "foreign_holding_up": holding_up}
 
     if cache is not None:
         return cache.get(f"pipeline_chips_{ticker}", compute, ttl=43200)
@@ -650,7 +655,10 @@ def score_position(ticker: str, *, cache=None,
 
         f5 = sum({"dd60": 3, "dd120": 3, "lower_half_52w": 2,
                   "stop_confirm": 2}[k] for k, v in s.items() if v)
-        return {"f5": int(f5), "_sub": {k: bool(v) for k, v in s.items()}}
+        return {"f5": int(f5), "_sub": {k: bool(v) for k, v in s.items()},
+                "dd60_pct": round(float(dd60), 2),
+                "dd120_pct": round(float(dd120), 2),
+                "pos_52w": round(float(pos), 3)}
 
     if cache is not None:
         return cache.get(f"pipeline_pos_{ticker}", compute, ttl=43200)
