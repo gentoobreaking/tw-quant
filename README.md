@@ -305,7 +305,8 @@ Top5 清單最後一欄「AI評估」可由 LLM 做風控覆核（不得更改�
 }
 ```
 
-金鑰走環境變數 `OPENAI_API_KEY`／`OPENAI_BASE_URL`（雲端與本地端點通吃）。
+金鑰與端點走環境變數：`OPENAI_API_KEY`／`OPENAI_BASE_URL`／`OPENAI_MODEL`
+（皆可覆蓋 config 設定；雲端與本地 Qwen 端點通吃）。
 
 ### 診斷
 

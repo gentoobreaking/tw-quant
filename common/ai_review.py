@@ -39,14 +39,18 @@ OUTPUT_CONSTRAINTS = """
 
 
 def resolve_ai_config(cfg_ai: dict) -> dict:
-    """解析 AI 設定：環境變數 > config（含 secrets 檔合併後的結果）"""
+    """解析 AI 設定：環境變數 > config
+
+    環境變數：OPENAI_BASE_URL / OPENAI_API_KEY / OPENAI_MODEL
+    """
     base_url = os.environ.get("OPENAI_BASE_URL") or cfg_ai.get("base_url") or ""
     api_key = os.environ.get("OPENAI_API_KEY") or cfg_ai.get("api_key") or ""
+    model = os.environ.get("OPENAI_MODEL") or cfg_ai.get("model") or ""
     return {
-        "enabled": bool(cfg_ai.get("enabled")) and bool(base_url) and bool(cfg_ai.get("model")),
+        "enabled": bool(cfg_ai.get("enabled")) and bool(base_url) and bool(model),
         "base_url": base_url.rstrip("/"),
         "api_key": api_key,
-        "model": cfg_ai.get("model", ""),
+        "model": model,
         "temperature": float(cfg_ai.get("temperature", 0.2)),
         "max_tokens": int(cfg_ai.get("max_tokens", 300)),
         "system_prompt": cfg_ai.get("system_prompt") or DEFAULT_SYSTEM_PROMPT,
