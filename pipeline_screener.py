@@ -47,32 +47,76 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
 
 def make_rate_limiter(cfg: dict):
     from common.rate_limit import RateLimiter
+    # 管線用通道（config）＋共用既有通道（如 yahoo holdings 的 "yf"）
+    merged = {
+        "yf": {"delay": 0.5, "jitter": 0.2},
+        **cfg["rate_limit"],
+    }
     rl_cfg = {name: {"delay": v["delay"], "jitter": v.get("jitter", 0.0)}
-              for name, v in cfg["rate_limit"].items()}
+              for name, v in merged.items()}
     return RateLimiter(rl_cfg)
 
 
 # ---------------------------------------------------------------- stages
-def stage0_universe(cfg: dict, cache: DiskCache,
+def stage0_universe(cfg: dict, cache: DiskCache, rate_limiter,
                     rebuild: bool = False) -> pd.DataFrame:
-    """Stage 0：股票池建構（實作於 T006/T007）
+    """Stage 0：股票池建構（T006 排名去重＋T007 MoneyDJ 族群標記）
 
     回傳欄位固定為 UNIVERSE_COLUMNS。
     """
     if not rebuild and UNIVERSE_PATH.exists():
         df = pd.read_csv(UNIVERSE_PATH, dtype={"ticker": str})
-        missing = set(UNIVERSE_COLUMNS) - set(df.columns)
-        if not missing:
-            logger.info("載入既有 universe.csv：%d 檔（%d 天內有效，"
-                        "ttl=%d 天）", len(df), cfg["universe_ttl_days"],
-                        cfg["universe_ttl_days"])
+        if not (set(UNIVERSE_COLUMNS) - set(df.columns)):
+            logger.info("載入既有 universe.csv：%d 檔（TTL %d 天）",
+                        len(df), cfg["universe_ttl_days"])
             return df[UNIVERSE_COLUMNS]
-        logger.warning("universe.csv 欄位缺 %s，將重建", missing)
+        logger.warning("universe.csv 欄位不完整，重建")
 
-    # T006/T007 實作點：ETF 排名 → 成分股去重 → MoneyDJ 族群標記
-    raise NotImplementedError(
-        "stage0 建構邏輯尚未實作（T006/T007）。"
-        "可先以 --rebuild-universe=false 搭配既有 universe.csv 執行。")
+    from common.universe import build_pool, rank_etfs
+    from common.etf_yahoo import fetch_top10_holdings
+    from common.moneydj import build_sector_map
+    from common.finmind import FinMindClient, with_fallback
+
+    # Step A/B：ETF Top5 → 成分股去重（T006）
+    top5 = rank_etfs(cfg)
+    if not top5:
+        raise RuntimeError("無法取得任何 ETF 價格資料，中止 Stage 0")
+    pool = build_pool(top5,
+                      holdings_fn=lambda t: fetch_top10_holdings(
+                          t, cache, rate_limiter),
+                      min_pool_size=int(cfg["min_pool_size"]))
+    tickers = pool["ticker"].tolist()
+
+    # Step C：族群標記（T007）——MoneyDJ 主路徑
+    sector_map = build_sector_map(tickers, rate_limiter, cache)
+
+    # 補源：FinMind TaiwanStockInfo（一次取全部名稱與官方產業別）
+    finmind = FinMindClient(token=cfg.get("finmind_token") or None,
+                            rate_limiter=rate_limiter)
+    info_rows, source = with_fallback(
+        lambda: [],
+        lambda: finmind.fetch_dataset("TaiwanStockInfo"),
+        label="TaiwanStockInfo")
+    name_by_id = {str(r.get("stock_id")): r.get("stock_name", "")
+                  for r in info_rows}
+    industry_by_id = {str(r.get("stock_id")): r.get("industry_category", "")
+                      for r in info_rows}
+    if source == "finmind":
+        for t in tickers:
+            sector_map.setdefault(t, industry_by_id.get(t, ""))
+
+    pool.insert(1, "name", [name_by_id.get(t, "") for t in pool["ticker"]])
+    pool.insert(2, "sector", [sector_map.get(t, "UNKNOWN")
+                              or industry_by_id.get(t, "UNKNOWN")
+                              for t in pool["ticker"]])
+    result = pool[[c for c in UNIVERSE_COLUMNS]]
+
+    UNIVERSE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    result.to_csv(UNIVERSE_PATH, index=False, encoding="utf-8")
+    unknown = int((result["sector"] == "UNKNOWN").sum())
+    logger.info("universe.csv 寫入：%d 檔（sector UNKNOWN %d 檔）",
+                len(result), unknown)
+    return result
 
 
 def stage1_scoring(universe: pd.DataFrame, cfg: dict,
@@ -126,7 +170,8 @@ def main(argv: Optional[list] = None) -> int:
     rate_limiter = make_rate_limiter(cfg)
     cache = DiskCache(str(CACHE_PATH), ttl=7200)
 
-    universe = stage0_universe(cfg, cache, rebuild=args.rebuild_universe)
+    universe = stage0_universe(cfg, cache, rate_limiter,
+                               rebuild=args.rebuild_universe)
     logger.info("stage0 完成：股票池 %d 檔", len(universe))
 
     scored = stage1_scoring(universe, cfg, cache)

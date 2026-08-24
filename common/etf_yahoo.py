@@ -18,6 +18,7 @@ _HEADERS = {
 
 def fetch_top10_holdings(ticker: str, cache: DiskCache, rate_limiter: RateLimiter,
                          retries: int = 2) -> Optional[list[str]]:
+    ticker = ticker.replace(".TW", "").replace(".TWO", "")   # 防雙重後綴
     exchange = get_exchange(ticker)
     url = f"https://tw.stock.yahoo.com/quote/{ticker}.{exchange}/holding"
     ck = f"yahoo_holdings_{ticker}"
@@ -71,4 +72,5 @@ def fetch_top10_holdings(ticker: str, cache: DiskCache, rate_limiter: RateLimite
                     time.sleep((attempt + 1) * 2)
         return None
 
-    return cache.get(ck, _fetch, ttl=86400)
+    # 失敗（None）不可入快取，否則會污染 24 小時
+    return cache.get(ck, _fetch, ttl=86400, skip_none=True)

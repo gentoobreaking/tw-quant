@@ -1,9 +1,7 @@
 """TDCC 集保查詢 — session 管理、大戶比率、頁面結構變更偵測（thread-safe）"""
 import re
-import ssl
 import threading
 import time
-from pathlib import Path
 from typing import Optional
 
 import requests
@@ -11,34 +9,8 @@ from bs4 import BeautifulSoup
 
 from .rate_limit import RateLimiter
 from .logger import logger
-
-# --- TLS 備援機制 -----------------------------------------------------------
-# 背景：「TWCA Global Root CA」憑證缺少 Subject Key Identifier 擴充，
-# OpenSSL 3.x 依 RFC 5280 嚴格檢查會拒絕整條鏈（LibreSSL 不檢查所以 curl 能過），
-# 導致 Python requests 連 TDCC 一律 CERTIFICATE_VERIFY_FAILED。
-# 處理：內建「TWCA Secure SSL 中繼憑證」（有 SKI）作為 trust anchor，
-# 標準驗證失敗且錯誤訊息吻合時才切換——仍保留完整憑證簽章與主機名稱驗證。
-# TDCC 日後修好憑證鏈，標準驗證通過，備援自動不再觸發。
-_TWCA_INTERMEDIATE = Path(__file__).resolve().parent / "certs" / "twca-intermediate.pem"
-_TDCC_SSL_ERR_MARKER = "Missing Subject Key Identifier"
-
-
-class _TwcaAdapter(requests.adapters.HTTPAdapter):
-    """以 TWCA 中繼憑證為 trust anchor 的 adapter。
-    注意：環境有 https_proxy 時 requests 改走 ProxyManager，
-    必須同時覆寫 proxy_manager_for 讓代理路徑也吃到同一個 context。"""
-
-    def __init__(self, tls_ctx: ssl.SSLContext, **kw):
-        self._tls_ctx = tls_ctx
-        super().__init__(**kw)
-
-    def init_poolmanager(self, *args, **kwargs):
-        kwargs["ssl_context"] = self._tls_ctx
-        super().init_poolmanager(*args, **kwargs)
-
-    def proxy_manager_for(self, proxy, **proxy_kwargs):
-        proxy_kwargs["ssl_context"] = self._tls_ctx
-        return super().proxy_manager_for(proxy, **proxy_kwargs)
+from .tls_fallback import (TWCA_INTERMEDIATE, TDCC_SSL_ERR_MARKER,
+                           is_missing_ski_error, make_twca_session)
 
 _TDCC_STRUCTURE_FINGERPRINTS = {
     "title": "股權分散表",
@@ -73,13 +45,8 @@ class TDCCQuery:
     def _ensure_fallback_session(self) -> requests.Session:
         """建立以 TWCA 中繼憑證為 trust anchor 的備援 session（延遲、單次）"""
         if self._fallback_session is None:
-            ctx = ssl.create_default_context(cafile=str(_TWCA_INTERMEDIATE))
-            # 中繼憑證非自簽根，需 PARTIAL_CHAIN 才能作為鏈終點
-            ctx.verify_flags |= getattr(ssl, "VERIFY_X509_PARTIAL_CHAIN", 0x80000)
-            s = requests.Session()
-            s.headers.update(self._session.headers)
+            s = make_twca_session(headers=dict(self._session.headers))
             s.cookies.update(self._session.cookies)
-            s.mount("https://", _TwcaAdapter(ctx))
             self._fallback_session = s
             logger.info("TDCC 建立備援連線（TWCA 中繼憑證 trust anchor）")
         return self._fallback_session
@@ -91,11 +58,11 @@ class TDCCQuery:
             try:
                 return self._session.request(method, url, timeout=15, **kw)
             except requests.exceptions.SSLError as e:
-                if _TDCC_SSL_ERR_MARKER not in str(e):
+                if not is_missing_ski_error(e):
                     raise
-                if not _TWCA_INTERMEDIATE.exists():
+                if not TWCA_INTERMEDIATE.exists():
                     raise RuntimeError(
-                        f"TDCC TLS 失敗且找不到備援憑證檔：{_TWCA_INTERMEDIATE}") from e
+                        f"TDCC TLS 失敗且找不到備援憑證檔：{TWCA_INTERMEDIATE}") from e
                 self._ssl_broken = True
                 logger.warning(
                     "TDCC SSL：OpenSSL 拒絕 TWCA Global Root（缺 SKI），"
