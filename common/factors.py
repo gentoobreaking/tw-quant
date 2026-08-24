@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
+import pandas as pd
+
 from .logger import logger
 
 
@@ -463,4 +465,165 @@ def score_chips(ticker: str, *, cache=None, rate_limiter=None,
 
     if cache is not None:
         return cache.get(f"pipeline_chips_{ticker}", compute, ttl=43200)
+    return compute()
+
+
+# ================================================================
+# 因子④ 波段動能（15 分）／因子⑤ 低位階（10 分）——T010
+# ================================================================
+def _default_history(ticker: str, period: str = "1y") -> pd.DataFrame:
+    """日線（未還原）：yfinance 主路徑"""
+    import warnings
+    warnings.filterwarnings("ignore")
+    import yfinance as yf
+    df = yf.download(ticker, period=period, interval="1d",
+                     auto_adjust=False, progress=False)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    return df[["Close", "Volume"]]
+
+
+def _rsi14(closes: pd.Series, period: int = 14) -> Optional[float]:
+    """RSI（Wilder 平滑）"""
+    if len(closes) < period + 1:
+        return None
+    delta = closes.diff().dropna()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.ewm(alpha=1 / period, min_periods=period).mean()
+    avg_loss = loss.ewm(alpha=1 / period, min_periods=period).mean()
+    if avg_loss.iloc[-1] == 0:
+        return 100.0
+    rs = avg_gain.iloc[-1] / avg_loss.iloc[-1]
+    return round(100 - 100 / (1 + rs), 2)
+
+
+def _prepare(history: pd.DataFrame) -> Optional[pd.DataFrame]:
+    """正規化歷史資料並計算指標欄位；資料不足回 None"""
+    if history is None or len(history) < 70:
+        return None
+    df = history.copy()
+    df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
+    df["Volume"] = pd.to_numeric(df.get("Volume"), errors="coerce")
+    df = df.dropna(subset=["Close"]).sort_index()
+    if len(df) < 70:
+        return None
+    df["ma20"] = df["Close"].rolling(20).mean()
+    df["ma60"] = df["Close"].rolling(60).mean()
+    df["ma5"] = df["Close"].rolling(5).mean()
+    df["vol5"] = df["Volume"].rolling(5).mean()
+    df["vol20"] = df["Volume"].rolling(20).mean()
+    return df
+
+
+def score_momentum(ticker: str, *, cache=None,
+                   history_fn: Optional[Callable[[str], pd.DataFrame]] = None,
+                   index_history_fn: Optional[Callable[[], pd.DataFrame]] = None,
+                   ) -> dict:
+    """因子④ 一個月波段動能（15 分，五子項各 3 分）"""
+    def compute() -> dict:
+        hfn = history_fn or (lambda t: _default_history(t))
+        df = _prepare(hfn(ticker))
+        sub = {}
+        if df is None:
+            return {"f4": 0, "_sub": sub, "ma20": None, "ma60": None,
+                    "dist_60d_high": None, "rsi14": None, "note": "歷史資料不足"}
+        last = df.iloc[-1]
+        s = {}
+
+        # 1. 現價 > 20MA
+        s["above_ma20"] = last["Close"] > last["ma20"]
+        # 2. 20MA 向上彎：今日 MA20 > 5 日前 MA20
+        s["ma20_up"] = (len(df) >= 25 and
+                        df["ma20"].iloc[-1] > df["ma20"].iloc[-6])
+        # 3. 20MA>60MA 或近 5 日內黃金交叉
+        golden_recent = False
+        if len(df) >= 65:
+            diff = df["ma20"] - df["ma60"]
+            golden_recent = bool((diff <= 0).any() and diff.iloc[-1] > 0
+                                 and (diff <= 0).iloc[-6:].any())
+        s["golden"] = last["ma20"] > last["ma60"] or golden_recent
+        # 4. 5 日均量 > 20 日均量
+        s["volume"] = last["vol5"] > last["vol20"]
+        # 5. 近 10 日相對大盤轉強
+        rel = False
+        try:
+            ihfn = index_history_fn or (lambda: _default_index())
+            idx_close = _prepare(ihfn())["Close"]
+            stock_ret = df["Close"].iloc[-1] / df["Close"].iloc[-11] - 1
+            idx_ret = idx_close.iloc[-1] / idx_close.iloc[-11] - 1
+            rel = stock_ret > idx_ret
+        except Exception:  # noqa: BLE001
+            pass
+        s["relative"] = rel
+
+        f4 = sum(3 for v in s.values() if v)
+        dist_60d_high = round(
+            (last["Close"] / df["Close"].iloc[-61:].max() - 1) * 100, 2)
+        return {
+            "f4": int(f4), "_sub": {k: bool(v) for k, v in s.items()},
+            "ma20": round(float(last["ma20"]), 2),
+            "ma60": round(float(last["ma60"]), 2),
+            "dist_60d_high": dist_60d_high,
+            "rsi14": _rsi14(df["Close"]),
+        }
+
+    if cache is not None:
+        return cache.get(f"pipeline_mom_{ticker}", compute, ttl=43200)
+    return compute()
+
+
+def _default_index() -> pd.DataFrame:
+    import yfinance as yf
+    df = yf.download("^TWII", period="1y", interval="1d",
+                     auto_adjust=False, progress=False)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    return df[["Close", "Volume"]]
+
+
+def score_position(ticker: str, *, cache=None,
+                   history_fn: Optional[Callable[[str], pd.DataFrame]] = None,
+                   ) -> dict:
+    """因子⑤ 股價低位階（10 分）"""
+    def compute() -> dict:
+        hfn = history_fn or (lambda t: _default_history(t))
+        df = _prepare(hfn(ticker))
+        sub = {}
+        if df is None:
+            return {"f5": 0, "_sub": sub}
+        close = df["Close"]
+        s = {}
+        # 1. 距 60 日高回撤 ≥5%
+        dd60 = (close.iloc[-1] / close.iloc[-61:].max() - 1) * 100
+        s["dd60"] = (-dd60) >= 5
+        # 2. 距 120 日高回撤 ≥8%
+        n120 = min(len(close), 120)
+        dd120 = (close.iloc[-1] / close.iloc[-n120:].max() - 1) * 100
+        s["dd120"] = (-dd120) >= 8
+        # 3. 52W 區間下半部
+        n52w = min(len(close), 250)
+        lo, hi = close.iloc[-n52w:].min(), close.iloc[-n52w:].max()
+        pos = (close.iloc[-1] - lo) / (hi - lo) if hi > lo else 0
+        s["lower_half_52w"] = pos <= 0.5
+        # 4. 止跌確認：近 5 日最低點後，任一日收紅且站上 5MA
+        stop_def = False
+        tail = df.iloc[-5:]
+        low_idx = tail["Close"].idxmin()
+        after = df.loc[low_idx:]
+        for i in range(1, len(after)):
+            prev_c = after["Close"].iloc[i - 1]
+            cur_c = after["Close"].iloc[i]
+            ma5 = after["ma5"].iloc[i]
+            if cur_c > prev_c and cur_c > ma5:
+                stop_def = True
+                break
+        s["stop_confirm"] = stop_def
+
+        f5 = sum({"dd60": 3, "dd120": 3, "lower_half_52w": 2,
+                  "stop_confirm": 2}[k] for k, v in s.items() if v)
+        return {"f5": int(f5), "_sub": {k: bool(v) for k, v in s.items()}}
+
+    if cache is not None:
+        return cache.get(f"pipeline_pos_{ticker}", compute, ttl=43200)
     return compute()
