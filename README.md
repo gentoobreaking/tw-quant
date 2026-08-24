@@ -1,6 +1,12 @@
-# TW-Quant — 台股得分制篩選器 + ETF 雙軌篩選系統
+# TW-Quant — 台股得分制篩選器 + ETF 雙軌篩選系統 + 找買點管線
 
-本專案是一個基於 Python 的自動化台股篩選工具，結合了技術面、基本面、籌碼面與位階分析。目前已進化至 **v4 版本**，引入了得分制、20 條件全景體檢以及高效的 SQLite 快取架構。
+本專案是一個基於 Python 的自動化台股篩選工具，結合了技術面、基本面、籌碼面與位階分析（**v5**：得分制、20 條件全景體檢、SQLite 快取）。
+
+| 工具 | 進入點 | 說明 |
+|------|--------|------|
+| 個股得分制篩選 | `stock_screener.py` | 全市場 20 條件評分＋四層分類 |
+| ETF 雙軌篩選 | `etf_screener.py` | 市值型／高股息／槓桿反向分類評分 |
+| **找買點管線** | `pipeline_screener.py` | ETF 成分股股票池 → 100 分量化 → S/A/B 分級 → Top5 |
 
 ## 核心特性
 
@@ -101,7 +107,7 @@
 ## 安裝與執行
 
 ### 環境要求
-- Python 3.9+（相容 3.14）
+- Python 3.9+（開發環境為 3.14；找買點管線建議 3.13+）
 - 依賴安裝：
 ```bash
 python3 -m venv venv
@@ -227,28 +233,86 @@ Apache License 2.0. 僅供研究用途，投資請謹慎評估風險。
 
 ---
 
-## 找買點管線（pipeline_screener.py，T003）
+## 找買點管線（pipeline_screener.py）
 
-三段式漏斗：ETF 成分股股票池 → 100 分量化評分 → 硬淘汰＋S/A/B 分級 → Top5。
+三段式漏斗：**ETF 成分股股票池 → 100 分量化評分 → 硬淘汰＋S/A/B 分級 → Top5 買點清單**。
 
-```bash
-# 完整流程（首次約 10~20 分鐘）
-python3 pipeline_screener.py
+### 流程
 
-# 強制重建股票池 / 指定 Top N / 驗證設定
-python3 pipeline_screener.py --rebuild-universe
-python3 pipeline_screener.py --top 10
-python3 pipeline_screener.py --dry-run
+```
+Stage 0  股票池建構：ETF 候選清單近三年「純價格報酬」排名取前五
+         → 前十大持股合併去重（≥50 檔）→ MoneyDJ 產業別標記 → data/universe.csv
+Stage 1  100 分量化評分：
+         因子① 基本面成長 25｜② EPS 預估上修 30（真實券商共識）｜
+         ③ 法人/主力籌碼 20｜④ 波段動能 15｜⑤ 股價低位階 10
+         → 表一（全量量化表，含進場區/停損/目標價/R/R）
+Stage 2  硬淘汰（H1–H5）→ S/A/B 訊號分級 → 表二（Top10）與 Top5 買點清單
 ```
 
-- **資料源**：yfinance（券商共識 EPS 預估——唯一免費源）＋ TWSE Open API ＋ TDCC；
-  FinMind REST 為備援
-- **機密設定**：一律走環境變數，不進設定檔——
-  `FINMIND_TOKEN`（FinMind 備援）、`OPENAI_API_KEY`／`OPENAI_BASE_URL`（AI 評估端點）；
-  建議寫在 shell profile 或 cron 環境中
-- **診斷**：`python3 scripts/check_data_sources.py` 一鍵檢查全部資料源連線
-- **輸出**：`screening_results/pipeline_YYYYMMDD.md`（Top5 買點表／兩份 100 分量化表／
-  淘汰名單／資料源統計／欄位計算說明稽核附錄）＋ full/top10/detail 三份 CSV
-- **股票池**：`config_pipeline.json` 的 `etf_candidates` 排名取前五（近三年純價格報酬，
-  不含配息），成分股去重後標記 MoneyDJ 產業別，快取於 `data/universe.csv`
-- **規格與演算法**：`~/tasks/tw-quant/spec.md` 與 `algs/*.md`
+### 訊號標籤
+
+| 訊號 | 條件 |
+|------|------|
+| 🟢 研究進場 | R/R≥2 且 f2≥24 且 f3≥14 且 2027 成長>0 |
+| 🟡 等待買點 | f2≥18 且 2027 成長>0 且 R/R≥1.5 且 法人尚未轉買 |
+| 🟠 股價過高 | total≥60 但條件未達 S/A |
+| ⚪ 資料缺失 | total<60（含回補前資料不全者） |
+| 🔴 淘汰 | 觸發硬淘汰規則 H1–H4 |
+
+### 執行
+
+```bash
+python3 pipeline_screener.py                    # 完整流程（首次約 10~20 分鐘）
+python3 pipeline_screener.py --rebuild-universe # 強制重建股票池
+python3 pipeline_screener.py --top 10           # 量化表保留前 N 名
+python3 pipeline_screener.py --dry-run          # 驗證設定，不發網路請求
+```
+
+### 輸出（screening_results/pipeline_YYYYMMDD.md ＋ CSV）
+
+一、Top5 買點清單｜二、表二 Top10 量化表｜三、表一全量量化表（附錄）｜
+四、淘汰名單（含規則編號與說明）｜五、資料源統計｜訊號分級定義｜七、欄位計算說明稽核附錄（公式＋每檔子項數值）
+
+另有 `pipeline_*_full.csv / _top10.csv / _detail.csv` 三份機器可讀檔。
+
+### 資料源與備援
+
+| 數據 | 主路徑 | 備援 |
+|------|--------|------|
+| EPS 預估／上修／產業對比／目標價 | yfinance | —（唯一免費源） |
+| 三大法人買賣超 | TWSE fund/T86 | FinMind InstitutionalInvestorsBuySell |
+| 月營收／財報／現金流 | TWSE OpenAPI | FinMind |
+| 日線 K 檔 | yfinance | FinMind TaiwanStockPrice |
+| 族群分類 | MoneyDJ（Big5 解析） | FinMind TaiwanStockInfo |
+| 大戶持股 | TDCC 集保 | — |
+
+### 快取與回補
+
+- 成功取得的資料快取 12~24 小時（SQLite），重跑秒級完成、不消耗額度
+- 抓取失敗或資料缺失者**不入快取**——下次執行自動重試回補
+
+### AI 質性覆核（選配）
+
+Top5 清單最後一欄「AI評估」可由 LLM 做風控覆核（不得更改分級，僅 ≤80 字觀察）。設定 `config_pipeline.json` 的 `ai_review` 區塊：
+
+```jsonc
+"ai_review": {
+  "enabled": true,
+  "base_url": "https://api.openai.com/v1",   // 本地 Qwen 例：http://localhost:11434/v1
+  "model": "gpt-4o-mini",                     // 本地例：qwen2.5:14b
+  "temperature": 0.2,
+  "system_prompt": "你現在是一名資深台股量化投資分析師……"
+}
+```
+
+金鑰走環境變數 `OPENAI_API_KEY`／`OPENAI_BASE_URL`（雲端與本地端點通吃）。
+
+### 診斷
+
+```bash
+python3 scripts/check_data_sources.py   # 一鍵檢查全部 6 個資料源連線
+```
+
+### 規格與演算法
+
+`~/tasks/tw-quant/spec.md` 與 `algs/*.md`（stage0-universe／factor-scoring／entry-stop-target／signal-grading）
