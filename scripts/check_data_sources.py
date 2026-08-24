@@ -32,6 +32,31 @@ def _pad(s: str, width: int) -> str:
     return s + " " * max(0, width - _display_width(s))
 
 
+def render_box(headers: list[str], rows: list[list[str]],
+               pad_fn=_pad, width_fn=_display_width) -> str:
+    """CJK 寬度感知的框線表格（每列皆有邊框）"""
+    ncols = len(headers)
+    widths = [width_fn(h) for h in headers]
+    for row in rows:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], width_fn(str(cell)))
+
+    def line(left, mid, right):
+        return left + mid.join("─" * (w + 2) for w in widths) + right
+
+    def fmt(cells):
+        cells = [str(c) for c in cells] + [""] * (ncols - len(cells))
+        return ("│ " + " │ ".join(
+            pad_fn(c, widths[i]) for i, c in enumerate(cells)) + " │")
+
+    out = [line("┌", "┬", "┐"), fmt(headers), line("├", "┼", "┤")]
+    for row in rows:
+        out.append(fmt(row))
+        out.append(line("├", "┼", "┤"))
+    out[-1] = line("└", "┴", "┘")
+    return "\n".join(out)
+
+
 # ---------------------------------------------------------------- 檢查函式
 def check_twse_openapi() -> tuple[bool, str, str]:
     """月營收 YoY／季 EPS 主路徑"""
@@ -176,15 +201,11 @@ def main() -> int:
         results.append((key, name, ok, summary, detail, purpose))
 
     # ---- 對齊總表 ----
-    w_name = max(_display_width(r[1]) for r in results) + 2
-    w_status = _display_width("✅ 可用") + 2
     print("找買點管線 — 資料源診斷")
-    print("-" * 62)
-    print(f"{_pad('資料源', w_name)}{_pad('狀態', w_status)}用途")
-    print("-" * 62)
-    for _, name, ok, summary, _, purpose in results:
-        print(f"{_pad(name, w_name)}{_pad(SYMBOL[ok], w_status)}{purpose}")
-    print("-" * 62)
+    headers = ["資料源", "結果", "用途"]
+    rows = [[name, f"{SYMBOL[ok]} {summary}".strip(), purpose]
+            for _, name, ok, summary, _, purpose in results]
+    print(render_box(headers, rows))
 
     # ---- 結論 ----
     failed_core = [k for k, _, ok, *_ in results if not ok and k in CORE]
