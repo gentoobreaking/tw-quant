@@ -191,6 +191,8 @@ def write_reports(full: pd.DataFrame, top10: pd.DataFrame,
         def table(df, title):
             f.write(f"\n## {title}\n\n")
             use = [c for c in FULL_COLUMNS if c in df.columns]
+            if "訊號" in df.columns:
+                use = ["訊號"] + [c for c in use if c != "訊號"]
             f.write(df[use].to_markdown(index=False))
             f.write("\n")
 

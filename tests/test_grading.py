@@ -129,3 +129,32 @@ def test_build_top5_order_and_conclusion():
     assert list(top5.ticker) == ["2000", "2001", "2002", "2003"]
     assert top5.iloc[0]["conclusion"].startswith("EPS上修＋法人轉買")
     assert top5.iloc[3]["conclusion"] == "條件不足，暫不列入"
+
+
+# ---- annotate_signals：全量標註含淘汰 ----
+from common.grading import annotate_signals   # noqa: E402
+
+
+def test_annotate_signals_full_coverage():
+    rows = [
+        base_row(ticker="2000", rr=2.4, f2=27, f3=15),          # S
+        base_row(ticker="2001", rr=1.8, f2=20, f3=8),           # A
+        base_row(ticker="2002", total=75, rr=1.0, f2=10),       # B
+        base_row(ticker="2003", growth_2027=-0.5, total=80),    # H1 → 🔴
+    ]
+    annotated, passed = annotate_signals(pd.DataFrame(rows),
+                                         {"s": 2.0, "a": 1.5})
+    assert list(annotated.columns)[:1] == ["訊號"]
+    sig = dict(zip(annotated.ticker, annotated["訊號"]))
+    assert sig["2000"] == "🟢S級:研究進場"
+    assert sig["2001"] == "🟡A級:等待買點"
+    assert sig["2002"] == "🟠B級:基本面好&股價偏高"
+    assert sig["2003"] == "🔴淘汰:淘汰"
+    # 淘汰墊底
+    assert annotated.iloc[-1]["ticker"] == "2003"
+    assert len(passed) == 3
+
+
+def test_annotate_signals_empty():
+    annotated, passed = annotate_signals(pd.DataFrame(), {"s": 2.0, "a": 1.5})
+    assert "訊號" in annotated.columns and annotated.empty

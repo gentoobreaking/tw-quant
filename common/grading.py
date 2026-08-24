@@ -173,3 +173,47 @@ def build_top5(graded: pd.DataFrame, top_n: int = 5) -> pd.DataFrame:
                           ascending=[True, False]).head(top_n)
     out["conclusion"] = out["grade"].map(CONCLUSION_TEMPLATES)
     return out.drop(columns=["_g_order"])
+
+
+# ---- 全量訊號標註（T014 增補）----
+SIGNAL_LABELS = {
+    "S": "🟢S級:研究進場",
+    "A": "🟡A級:等待買點",
+    "B": "🟠B級:基本面好&股價偏高",
+    "C": "⚪C級:條件不足",
+    "R": "🔴淘汰:淘汰",
+}
+
+
+def annotate_signals(scored_full: pd.DataFrame,
+                     rr_thresholds: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """對全量評分結果標註「訊號」欄（含淘汰）
+
+    流程：全量套用硬淘汰 → 淘汰者 grade=R（🔴），
+    通過者走 S/A/B 分級 → 合併並把「訊號」放到第一欄。
+
+    回傳 (標註後全量 DataFrame, 通過淘汰且已分級的 DataFrame)
+    """
+    if scored_full.empty:
+        out = scored_full.copy()
+        out["grade"] = []
+        out["訊號"] = []
+        return out, out.copy()
+
+    passed, rejected = apply_hard_rejects(scored_full)
+    graded = grade_signals(passed, rr_thresholds)
+    if not rejected.empty:
+        rej = rejected.copy()
+        rej["grade"] = "R"
+        combined = pd.concat([graded, rej], ignore_index=True)
+    else:
+        combined = graded
+
+    combined["訊號"] = combined["grade"].map(SIGNAL_LABELS)
+    # 排序：非淘汰按 total 降序在前，淘汰墊底
+    combined["_dead"] = (combined["grade"] == "R").astype(int)
+    combined = combined.sort_values(["_dead", "total"],
+                                    ascending=[True, False]).reset_index(drop=True)
+    combined = combined.drop(columns=["_dead"])
+    first = ["訊號"] + [c for c in combined.columns if c != "訊號"]
+    return combined[first], graded

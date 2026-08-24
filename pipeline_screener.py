@@ -171,7 +171,7 @@ def main(argv: Optional[list] = None) -> int:
     cache = DiskCache(str(CACHE_PATH), ttl=7200)
 
     from common.finmind import FinMindClient, get_stats, reset_stats
-    from common.grading import apply_hard_rejects, build_top5, grade_signals
+    from common.grading import annotate_signals, build_top5
     from common.scorer import run_scoring, write_reports
 
     reset_stats()
@@ -190,14 +190,15 @@ def main(argv: Optional[list] = None) -> int:
             rate_limiter=rate_limiter, finmind=finmind)
         logger.info("stage1 完成：%d 檔已評分", len(full))
 
-        logger.info("── Stage 2：硬淘汰＋S/A/B 分級 ──")
-        passed, rejected = apply_hard_rejects(top10)
-        graded = grade_signals(passed, cfg["rr_thresholds"])
-        top5 = build_top5(graded, top_n=5)
-        logger.info("stage2 完成：%d 檔通過淘汰，最終 %d 檔",
-                    len(passed), len(top5))
+        logger.info("── Stage 2：硬淘汰＋S/A/B 分級（全量標註） ──")
+        annotated, graded_passed = annotate_signals(full, cfg["rr_thresholds"])
+        rejected = annotated[annotated["grade"] == "R"]
+        top5 = build_top5(graded_passed, top_n=5)
+        top10 = annotated[annotated["grade"] != "R"].head(args.top)
+        logger.info("stage2 完成：%d 檔淘汰 / %d 檔分級 / Top%d 輸出",
+                    len(rejected), len(graded_passed), len(top10))
 
-        md_path, *_ = write_reports(full, top10, details,
+        md_path, *_ = write_reports(annotated, top10, details,
                                     rejected=rejected,
                                     stats=get_stats(), top5=top5)
         logger.info("完成！報表：%s", md_path)
