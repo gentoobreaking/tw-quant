@@ -214,6 +214,7 @@ tw-quant/
 ├── etf_top10_holdings.py    # 獨立腳本：快速查詢單檔 ETF 前十持股
 ├── analyze-report.py        # 報告 LLM 分析（直呼 API，吃 ai_review 設定）
 ├── pi-analyze-report.sh     # 報告 pi agent 分析（非互動 print 模式）
+├── chat-report.py           # 報告網頁版 ChatGPT/Grok 分析（免 key，camofox）
 ├── test-case/               # AI 覆核實驗腳本（ai-test.py 等）
 ├── tests/                    # pytest 單元測試（43 tests）
 └── screening_results/        # 篩選結果 CSV（每月一個）
@@ -309,12 +310,13 @@ Top5 清單最後一欄「AI評估」可由 LLM 做風控覆核（不得更改�
 
 ### 報告 AI 分析（管線跑完後）
 
-報告產出後有兩支腳本可做第二層分析，輸出皆存至 `screening_results/`：
+報告產出後有三支腳本可做第二層分析，輸出皆存至 `screening_results/`：
 
 | 腳本 | 分析者 | 輸出 | 適用場景 |
 |------|--------|------|----------|
 | `analyze-report.py` | 直呼 LLM API（吃 `ai_review` 設定） | `pipeline_日期_analysis.md` | 快速、可指定任一模型 |
 | `pi-analyze-report.sh` | 本機 pi agent（用 pi 自己的模型與憑證） | `pipeline_日期_pi_analysis.md` | 需要 agent 能力（可回頭查檔、跨檔比對） |
+| `chat-report.py` | 網頁版 ChatGPT/Grok（免登入、免 key，透過 camofox 反偵測瀏覽器） | `pipeline_日期_chatgpt_analysis.md` | 沒有 API key、想借重網頁版模型的長文分析 |
 
 ```bash
 # ① LLM 直接分析（預設抓最新報告；模型/max_tokens 吃 config_pipeline.json）
@@ -326,11 +328,20 @@ Top5 清單最後一欄「AI評估」可由 LLM 做風控覆核（不得更改�
 ./pi-analyze-report.sh                     # 抓最新報告，用 pi 預設模型
 ./pi-analyze-report.sh "" "特別注意台積電法人動向"   # 附加分析要求
 
+# ③ 網頁版 ChatGPT/Grok 免登入分析（透過 camofox 自動分段貼上＋收回覆）
+./chat-report.py                           # 最新報告 → chatgpt.com
+SITE=grok ./chat-report.py                 # 改用 grok.com
+CHUNK=4000 ./chat-report.py                # 調整分段大小（預設 6000 字/段）
+
 # 串在管線後一次完成
 python3 pipeline_screener.py && ./analyze-report.py && ./pi-analyze-report.sh
 ```
 
 分析角度：產業集中度、標的間相關性風險、S/A/B 分級可信度、部位優先序與後續追蹤事件。
+
+`chat-report.py` 補充說明：
+- 前置：camofox-browser 服務（未啟動會自動拉起；免登入但有使用額度限制，不適合批次跑）
+- 報告超過單則訊息上限時會自動切段，先送指令再依序傳全文，最後觸發分析
 
 ### 診斷
 
