@@ -539,6 +539,27 @@ def score_chips(ticker: str, *, cache=None, rate_limiter=None,
 # ================================================================
 # 因子④ 波段動能（15 分）／因子⑤ 低位階（10 分）——T010
 # ================================================================
+def _drop_incomplete_last_bar(df: pd.DataFrame) -> pd.DataFrame:
+    """丟棄今日未完成的盤中 K 棒。
+
+    台股 13:30 收盤（含收盤拍賣），14:00 前最後一根日 K 仍是浮動的
+    盤中快照；若不丟棄，close／MA／進場區會建立在會漂移的數字上。
+    """
+    if df is None or df.empty:
+        return df
+    try:
+        last = pd.Timestamp(df.index[-1])
+        if last.tzinfo is not None:
+            last = last.tz_localize(None)
+        last = last.normalize()
+    except Exception:
+        return df
+    now = pd.Timestamp.now()
+    if last == now.normalize() and now.hour < 14:
+        return df.iloc[:-1]
+    return df
+
+
 def _default_history(ticker: str, period: str = "1y") -> pd.DataFrame:
     """日線（未還原）：yfinance 主路徑"""
     import warnings
@@ -549,7 +570,7 @@ def _default_history(ticker: str, period: str = "1y") -> pd.DataFrame:
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
     cols = ["Close", "Volume"] + (["Low"] if "Low" in df.columns else [])
-    return df[cols]
+    return _drop_incomplete_last_bar(df[cols])
 
 
 def _rsi14(closes: pd.Series, period: int = 14) -> Optional[float]:

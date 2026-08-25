@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "twstockmcpserver": {
+      "baseUrl": "https://TW-Stock-MCP-Server.fastmcp.app/mcp"
+    }
+  }
+}
