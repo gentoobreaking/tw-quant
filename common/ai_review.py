@@ -123,10 +123,28 @@ def _call_llm(messages: list[dict], ai_cfg: dict,
         body = r.text[:150]
         if r.status_code == 200:
             try:
-                text = str(r.json()["choices"][0]["message"].get("content")
-                           or "").strip()
+                msg = r.json()["choices"][0]["message"]
+                text = str(msg.get("content") or "").strip()
+                if not text:
+                    # 推理模型常把輸出放 reasoning 欄；有就拿來用
+                    reason = (msg.get("reasoning_content")
+                              or msg.get("reasoning") or "")
+                    if str(reason).strip():
+                        text = str(reason).strip()[-300:]   # 取結尾結論
+                        logger.info("AI content 為空，改用 reasoning 輸出")
             except (ValueError, KeyError, IndexError, TypeError):
                 text = ""
+            if not text:
+                keys = []
+                try:
+                    msg = r.json()["choices"][0]["message"]
+                    keys = [k for k in msg.keys()
+                            if msg.get(k)]
+                except Exception:  # noqa: BLE001
+                    pass
+                logger.warning(
+                    "AI 回應空內容（message 非空欄位：%s，attempt %d/%d）",
+                    keys or "無", attempt + 1, attempts)
             if not text:
                 # 部分推理模型在 max_tokens 內只輸出思考不輸出答案 → 空內容
                 logger.warning("AI 回應空內容（attempt %d/%d），重試",
