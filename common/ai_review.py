@@ -55,7 +55,6 @@ def resolve_ai_config(cfg_ai: dict) -> dict:
         "base_url": base_url.rstrip("/"),
         "api_key": api_key,
         "model": model,
-        "temperature": float(cfg_ai.get("temperature", 0.2)),
         "max_tokens": int(cfg_ai.get("max_tokens", 300)),
         "system_prompt": cfg_ai.get("system_prompt") or DEFAULT_SYSTEM_PROMPT,
     }
@@ -73,18 +72,38 @@ def build_context(row: dict) -> dict:
     return {k: row.get(k) for k in keys if row.get(k) is not None}
 
 
+def _is_degenerate(text: str) -> bool:
+    """偵測重複退化：同一行重複 ≥3 次，或開頭片段反覆出現"""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if len(lines) >= 3 and len(set(lines)) <= len(lines) / 3:
+        return True
+    probe = text[:24]
+    if len(text) > 72 and text.count(probe) >= 3:
+        return True
+    return False
+
+
 def _call_llm(messages: list[dict], ai_cfg: dict,
               session: Optional[requests.Session] = None) -> str:
-    url = f"{ai_cfg['base_url']}/chat/completions"
+    """呼叫 chat/completions；429/5xx/連線錯誤自動重試（最多 3 次）
+
+    參考 tw-quant-pickup 的可用實作：payload 僅送 model/messages/max_tokens，
+    不送 temperature——部分免費模型上游對不相容參數會直接回 500/503。
+    """
+    base_url = ai_cfg["base_url"]
+    # 部分 proxy 的 OPENAI_BASE_URL 已含完整路徑，避免雙重後綴
+    if base_url.endswith("/chat/completions"):
+        url = base_url
+    else:
+        url = f"{base_url}/chat/completions"
     headers = {"Content-Type": "application/json"}
     if ai_cfg["api_key"]:
         headers["Authorization"] = f"Bearer {ai_cfg['api_key']}"
-    payload = {
-        "model": ai_cfg["model"],
-        "messages": messages,
-        "temperature": ai_cfg["temperature"],
-        "max_tokens": ai_cfg["max_tokens"],
-    }
+    payload: dict = {"model": ai_cfg["model"], "messages": messages}
+    if ai_cfg.get("max_tokens"):
+        payload["max_tokens"] = ai_cfg["max_tokens"]
+
+
     sess = session or requests
     attempts = int(ai_cfg.get("retries", 3))
     RETRYABLE = {429, 500, 502, 503, 504}
@@ -103,7 +122,27 @@ def _call_llm(messages: list[dict], ai_cfg: dict,
 
         body = r.text[:150]
         if r.status_code == 200:
-            return r.json()["choices"][0]["message"]["content"].strip()
+            try:
+                text = str(r.json()["choices"][0]["message"].get("content")
+                           or "").strip()
+            except (ValueError, KeyError, IndexError, TypeError):
+                text = ""
+            if not text:
+                # 部分推理模型在 max_tokens 內只輸出思考不輸出答案 → 空內容
+                logger.warning("AI 回應空內容（attempt %d/%d），重試",
+                               attempt + 1, attempts)
+                last_err = "模型回傳空內容"
+                if attempt < attempts - 1:
+                    time.sleep(3)
+                continue
+            if _is_degenerate(text):
+                logger.warning("AI 輸出重複退化（attempt %d/%d），重試",
+                               attempt + 1, attempts)
+                last_err = "輸出重複退化"
+                if attempt < attempts - 1:
+                    time.sleep(3)
+                continue
+            return text
         if r.status_code in RETRYABLE:
             logger.warning("AI 呼叫 HTTP %d（attempt %d/%d），稍後重試：%s",
                            r.status_code, attempt + 1, attempts, body)
@@ -116,11 +155,10 @@ def _call_llm(messages: list[dict], ai_cfg: dict,
         hint = ""
         if r.status_code in (401, 404) and "model" in body.lower():
             hint = (f"；請確認 model id 是否為該端點 /models 清單中的名稱"
-                    f"（可查 {ai_cfg['base_url']}/models）")
+                    f"（可查 {base_url}/models）")
         raise RuntimeError(f"HTTP {r.status_code}: {body}{hint}")
 
     raise RuntimeError(f"HTTP 錯誤（已重試 {attempts} 次）: {last_err}")
-    return r.json()["choices"][0]["message"]["content"].strip()
 
 
 def ai_evaluate(row: dict, cfg_ai: dict, cache=None,
@@ -144,27 +182,43 @@ def ai_evaluate(row: dict, cfg_ai: dict, cache=None,
                          "（JSON）。請依系統指令進行風控覆核：\n"
                          + context_json)},
         ]
-        try:
-            text = _call_llm(messages, ai_cfg, session=session)
-            # 防呆：去除 markdown 圍籬與過長輸出
-            text = text.replace("```", "").strip()
-            return text[:300]
-        except Exception as e:  # noqa: BLE001
-            logger.warning("AI 評估失敗（%s）：%s",
-                           context.get("ticker"), str(e)[:100])
-            return f"—（AI 未回應：{str(e)[:60]}）"
+        # 備援模型鏈：主模型掛了依序嘗試 fallback_models
+        models = [ai_cfg["model"]]
+        models += [m for m in (ai_cfg.get("fallback_models") or [])
+                   if m not in models]
+        errs = []
+        for m in models:
+            if len(models) > 1:
+                logger.info("AI 評估使用模型：%s", m)
+            try:
+                text = _call_llm(messages, dict(ai_cfg, model=m),
+                                 session=session)
+                text = text.replace("```", "").strip()
+                return f"{text}（via {m}）"[:300] if len(models) > 1 else text
+            except Exception as e:  # noqa: BLE001
+                errs.append(f"{m}: {str(e)[:80]}")
+                logger.warning("AI 評估失敗（%s @ %s）：%s",
+                               context.get("ticker"), m, str(e)[:100])
+        return f"—（AI 未回應；{'；'.join(errs)[:150]}）"
 
     key = f"pipeline_ai_{context.get('ticker', 'x')}_{digest}"
+
+    def _valid(s) -> bool:
+        """有效快取：非空、非失敗標記、非重複退化"""
+        return (isinstance(s, str) and s.strip()
+                and not s.startswith("—") and not _is_degenerate(s))
+
     if cache is not None:
-        # 有內容才算完整可快取；「—」開頭（失敗）下次重試
-        holder: dict = {}
+        # 讀既有快取；無效（空/退化/失敗字串）→ 視同未命中重新計算並覆寫
+        existing = cache.get(key, lambda: None,
+                             ttl=7 * 86400, skip_none=True)
+        if _valid(existing):
+            return existing
 
-        def _fetch():
-            r = compute()
-            holder["r"] = r
-            return None if r.startswith("—") else r
+    result = compute()
 
-        got = cache.get(key, _fetch, ttl=7 * 86400, skip_none=True)
-        return got if isinstance(got, str) else holder.get("r", "—")
+    if cache is not None and _valid(result):
+        cache.save_disk_cache(
+            {key: {"data": result, "_ts": __import__("time").time()}})
 
-    return compute()
+    return result

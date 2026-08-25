@@ -74,7 +74,7 @@
     "base_url": "",
     "model": "laguna-s-2.1-free",
     "temperature": 0.2,
-    "max_tokens": 300,
+    "max_tokens": 1200,
     "system_prompt": "你現在是一名資深台股量化投資分析師，拿到數據不是只是看數據給結論，而是要重新收集相關數據及校驗數據及分析市場後，給出真實的台股量化投資建議。",
     "fallback_models": [
       "nemotron-3-ultra-free"

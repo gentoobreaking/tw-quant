@@ -298,7 +298,6 @@ Top5 清單最後一欄「AI評估」可由 LLM 做風控覆核（不得更改�
   // "enabled": false,          // 明確設 false 可強制關閉
   // "base_url": "...",         // 環境變數未設時的備用
   // "model": "...",
-  "temperature": 0.2,
   "system_prompt": "你現在是一名資深台股量化投資分析師……"
 }
 ```

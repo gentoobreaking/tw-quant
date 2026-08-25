@@ -88,7 +88,7 @@ def ping_model(base_url: str, api_key: str, model: str,
                        or "").strip()
             if content:
                 return f"✅ 可用（{elapsed}s）", elapsed
-            return "⚠️ 回應空內容（可能為推理模型，調大 max_tokens 再試）", elapsed
+            return "⚠️ 回應空內容（推理模型思考未完成）", elapsed
         except (ValueError, KeyError):
             return f"⚠️ HTTP 200 但回應格式異常", elapsed
 
@@ -115,8 +115,8 @@ def main() -> int:
                     help="逗號分隔的指定模型清單（優先於 --all 與 --free）")
     ap.add_argument("--free", action="store_true",
                     help="只測名稱含 free 的模型")
-    ap.add_argument("--max-tokens", type=int, default=32,
-                    help="每次測試的 max_tokens（預設 32，控制消耗）")
+    ap.add_argument("--max-tokens", type=int, default=128,
+                    help="每次測試的 max_tokens（預設 128，推理模型需要較大空間）")
     ap.add_argument("--delay", type=float, default=1.0,
                     help="逐模型測試間隔秒數（預設 1）")
     ap.add_argument("--timeout", type=int, default=60,
