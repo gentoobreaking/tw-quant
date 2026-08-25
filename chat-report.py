@@ -157,6 +157,40 @@ def chunks(text: str, size: int):
     return out
 
 
+def clean_reply(text: str) -> str:
+    """把 a11y snapshot 的樹狀標記轉成乾淨的 markdown"""
+    out = []
+    for l in text.splitlines():
+        s = l.strip().removeprefix("- ")
+        if s in ("list:", "list", "status", "paragraph:", "text:",
+                 "strong:", "blockquote:"):
+            continue
+        if s.startswith("listitem:"):
+            rest = s[len("listitem:"):].strip()
+            out.append(f"- {rest}" if rest else "")
+            continue
+        if s == "separator":
+            out.append("---"); continue
+        if s.startswith("group "):
+            continue
+        m = re.match(r'heading "(.*)"\s*\[level=(\d)\]', s)
+        if m:
+            lvl = int(m.group(2))
+            out.append("#" * (lvl + 1) + " " + m.group(1))
+            continue
+        for pre in ("paragraph: ", "text: ", "blockquote: "):
+            if s.startswith(pre):
+                s = ("> " if pre == "blockquote: " else "") + s[len(pre):]
+                break
+        else:
+            if s.startswith("strong: "):
+                s = "**" + s[len("strong: "):].strip().strip('"') + "**"
+            elif s.startswith('button "'):
+                continue
+        out.append(s)
+    return "\n".join(out)
+
+
 def extract_reply(snap: str, site: dict) -> str:
     """抽出最後一個「XXX said:」之後的回覆；須出現 Copy 按鈕（生成完畢）才算"""
     lines = snap.splitlines()
@@ -172,7 +206,7 @@ def extract_reply(snap: str, site: dict) -> str:
     text = "\n".join(l.strip().removeprefix("- ").removeprefix("- text:")
                      for l in text.splitlines() if l.strip())
     text = text.replace("- paragraph: ", "").replace("paragraph: ", "")
-    return text.strip()
+    return clean_reply(text.strip())
 
 
 def wait_replied(tab: str, site: dict, timeout: int = 90) -> None:
