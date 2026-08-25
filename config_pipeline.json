@@ -72,9 +72,12 @@
   "ai_review": {
     "_comment": "Top5 AI 質性覆核。OPENAI_BASE_URL/OPENAI_API_KEY/OPENAI_MODEL 三個環境變數齊備即自動啟用；設 \"enabled\": false 可強制關閉。base_url 範例：雲端 https://api.openai.com/v1／本地 Qwen http://localhost:11434/v1",
     "base_url": "",
-    "model": "",
+    "model": "laguna-s-2.1-free",
     "temperature": 0.2,
     "max_tokens": 300,
-    "system_prompt": "你現在是一名資深台股量化投資分析師，拿到數據不是只是看數據給結論，而是要重新收集相關數據及校驗數據及分析市場後，給出真實的台股量化投資建議。"
+    "system_prompt": "你現在是一名資深台股量化投資分析師，拿到數據不是只是看數據給結論，而是要重新收集相關數據及校驗數據及分析市場後，給出真實的台股量化投資建議。",
+    "fallback_models": [
+      "nemotron-3-ultra-free"
+    ]
   }
 }
