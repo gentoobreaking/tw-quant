@@ -12,7 +12,6 @@ __pycache__/
 .cache/
 .cache_etf/
 *.db               # SQLite 快取資料庫
-common/screening_results/
 
 # 日誌
 logs/
@@ -28,7 +27,7 @@ data/
 tmp/
 
 # 篩選報告（每月動態產出）
-screening_results/
+#screening_results/
 
 # GitHub workflows（CI/CD 需另外設定權限，暫不進版控）
 .github/workflows/test.yml
@@ -40,8 +39,6 @@ screening_results/
 
 # 沙箱／代理工具設定
 .pi/
-
-config_pipeline.json
 
 # 機密設定（token／API key）——絕不進版控
 config_secrets.json
