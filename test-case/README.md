@@ -57,4 +57,5 @@ FAIL: HTTP 錯誤（已重試 3 次）: HTTP 429: {"type":"error","error":{"type
 python3 ai-test.py hy3-free 100000 3 0 1
 OK: 數據無矛盾，但收盤價已逾進場高點，法人連買慎防調節。未含載板景氣循環及財報時程風險，流動性佳惟停損寬須控倉。
 
+=> default: hy3-free , fallback: nemotron-3-ultra-free , mimo-v2.5-free
 

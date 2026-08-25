@@ -212,6 +212,9 @@ tw-quant/
 │   ├── candidates_ETN.csv   # ETN 候選（~15 檔）
 │   └── candidates_REAT.csv  # REAT 候選（~6 檔）
 ├── etf_top10_holdings.py    # 獨立腳本：快速查詢單檔 ETF 前十持股
+├── analyze-report.py        # 報告 LLM 分析（直呼 API，吃 ai_review 設定）
+├── pi-analyze-report.sh     # 報告 pi agent 分析（非互動 print 模式）
+├── test-case/               # AI 覆核實驗腳本（ai-test.py 等）
 ├── tests/                    # pytest 單元測試（43 tests）
 └── screening_results/        # 篩選結果 CSV（每月一個）
 ```
@@ -257,6 +260,8 @@ Stage 2  硬淘汰（H1–H5）→ S/A/B 訊號分級 → 表二（Top10）與 T
 ### 執行
 
 ```bash
+vim config_pipeline.json                        # 從ETF成分股配置台股來源(原訂top5 ETF,數量可調)
+
 python3 pipeline_screener.py                    # 完整流程（首次約 10~20 分鐘）
 python3 pipeline_screener.py --rebuild-universe # 強制重建股票池
 python3 pipeline_screener.py --top 10           # 量化表保留前 N 名
@@ -301,6 +306,31 @@ Top5 清單最後一欄「AI評估」可由 LLM 做風控覆核（不得更改�
   "system_prompt": "你現在是一名資深台股量化投資分析師……"
 }
 ```
+
+### 報告 AI 分析（管線跑完後）
+
+報告產出後有兩支腳本可做第二層分析，輸出皆存至 `screening_results/`：
+
+| 腳本 | 分析者 | 輸出 | 適用場景 |
+|------|--------|------|----------|
+| `analyze-report.py` | 直呼 LLM API（吃 `ai_review` 設定） | `pipeline_日期_analysis.md` | 快速、可指定任一模型 |
+| `pi-analyze-report.sh` | 本機 pi agent（用 pi 自己的模型與憑證） | `pipeline_日期_pi_analysis.md` | 需要 agent 能力（可回頭查檔、跨檔比對） |
+
+```bash
+# ① LLM 直接分析（預設抓最新報告；模型/max_tokens 吃 config_pipeline.json）
+./analyze-report.py                        # 最新報告＋config 預設模型
+./analyze-report.py hy3-free 16384         # 指定模型與 max_tokens
+./analyze-report.py screening_results/pipeline_20260815.md   # 指定舊報告
+
+# ② pi agent 分析（非互動 print 模式 + --no-session 不留紀錄）
+./pi-analyze-report.sh                     # 抓最新報告，用 pi 預設模型
+./pi-analyze-report.sh "" "特別注意台積電法人動向"   # 附加分析要求
+
+# 串在管線後一次完成
+python3 pipeline_screener.py && ./analyze-report.py && ./pi-analyze-report.sh
+```
+
+分析角度：產業集中度、標的間相關性風險、S/A/B 分級可信度、部位優先序與後續追蹤事件。
 
 ### 診斷
 

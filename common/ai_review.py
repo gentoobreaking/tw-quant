@@ -56,6 +56,9 @@ def resolve_ai_config(cfg_ai: dict) -> dict:
         "api_key": api_key,
         "model": model,
         "max_tokens": int(cfg_ai.get("max_tokens", 300)),
+        "retries": int(cfg_ai.get("retries", 3)),
+        "retry_backoff": float(cfg_ai.get("retry_backoff", 5)),
+        "retry_delay": float(cfg_ai.get("retry_delay", 3)),
         "system_prompt": cfg_ai.get("system_prompt") or DEFAULT_SYSTEM_PROMPT,
     }
 
@@ -106,6 +109,9 @@ def _call_llm(messages: list[dict], ai_cfg: dict,
 
     sess = session or requests
     attempts = int(ai_cfg.get("retries", 3))
+    # 間隔可配置：retry_backoff＝連線錯誤/HTTP 429/5xx 的遞增基數；retry_delay＝空內容/退化輸出的固定等待
+    backoff = max(0.0, float(ai_cfg.get("retry_backoff", 5)))
+    delay = max(0.0, float(ai_cfg.get("retry_delay", 3)))
     RETRYABLE = {429, 500, 502, 503, 504}
     last_err = "未知錯誤"
 
@@ -117,7 +123,7 @@ def _call_llm(messages: list[dict], ai_cfg: dict,
                            attempt + 1, attempts, str(e)[:80])
             last_err = str(e)[:120]
             if attempt < attempts - 1:
-                time.sleep(5 * (attempt + 1))
+                time.sleep(backoff * (attempt + 1))
             continue
 
         body = r.text[:150]
@@ -151,14 +157,14 @@ def _call_llm(messages: list[dict], ai_cfg: dict,
                                attempt + 1, attempts)
                 last_err = "模型回傳空內容"
                 if attempt < attempts - 1:
-                    time.sleep(3)
+                    time.sleep(delay)
                 continue
             if _is_degenerate(text):
                 logger.warning("AI 輸出重複退化（attempt %d/%d），重試",
                                attempt + 1, attempts)
                 last_err = "輸出重複退化"
                 if attempt < attempts - 1:
-                    time.sleep(3)
+                    time.sleep(delay)
                 continue
             return text
         if r.status_code in RETRYABLE:
@@ -166,7 +172,7 @@ def _call_llm(messages: list[dict], ai_cfg: dict,
                            r.status_code, attempt + 1, attempts, body)
             last_err = f"HTTP {r.status_code}: {body}"
             if attempt < attempts - 1:
-                time.sleep(5 * (attempt + 1))
+                time.sleep(backoff * (attempt + 1))
             continue
 
         # 不可重試的客戶端錯誤（401/404 等）

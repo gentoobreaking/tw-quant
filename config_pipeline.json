@@ -1,53 +1,83 @@
 {
   "_comment": "找買點管線設定（T004）— etf_candidates 可隨時調整，排名取前 top_n_etf",
   "etf_candidates": [
-    {
-      "ticker": "0050.TW",
-      "name": "元大台灣50",
-      "category": "市值型"
-    },
-    {
-      "ticker": "006208.TW",
-      "name": "富邦台灣50",
-      "category": "市值型"
-    },
-    {
-      "ticker": "00850.TW",
-      "name": "國泰台灣領袖50",
-      "category": "市值型"
-    },
-    {
-      "ticker": "00692.TW",
-      "name": "富邦公司治理",
-      "category": "市值型"
-    },
-    {
-      "ticker": "0056.TW",
-      "name": "元大高股息",
-      "category": "高股息"
-    },
-    {
-      "ticker": "00878.TW",
-      "name": "國泰永續高股息",
-      "category": "高股息"
-    },
-    {
-      "ticker": "00919.TW",
-      "name": "群益台灣精選高息",
-      "category": "高股息"
-    },
-    {
-      "ticker": "00929.TW",
-      "name": "復華台灣科技優息",
-      "category": "高股息"
-    },
-    {
-      "ticker": "00713.TW",
-      "name": "元大台灣高息低波",
-      "category": "高股息"
-    }
+  {
+    "ticker": "0050.TW",
+    "name": "元大台灣50",
+    "category": "市值型"
+  },
+  {
+    "ticker": "006208.TW",
+    "name": "富邦台灣50",
+    "category": "市值型"
+  },
+  {
+    "ticker": "00923.TW",
+    "name": "群益台ESG低碳50",
+    "category": "市值型"
+  },
+  {
+    "ticker": "009816.TW",
+    "name": "凱基台灣TOP50",
+    "category": "市值型"
+  },
+  {
+    "ticker": "0052.TW",
+    "name": "富邦科技",
+    "category": "市值型"
+  },
+  {
+    "ticker": "00981A.TW",
+    "name": "主動統一台股增長",
+    "category": "主動式"
+  },
+  {
+    "ticker": "00992A.TW",
+    "name": "主動群益科技創新",
+    "category": "主動式"
+  },
+  {
+    "ticker": "00982A.TW",
+    "name": "主動群益台灣強棒",
+    "category": "主動式"
+  },
+  {
+    "ticker": "00991A.TW",
+    "name": "主動復華未來50",
+    "category": "主動式"
+  },
+  {
+    "ticker": "00990A.TW",
+    "name": "主動元大AI新經濟",
+    "category": "主動式"
+  },
+  {
+    "ticker": "0056.TW",
+    "name": "元大高股息",
+    "category": "高股息"
+  },
+  {
+    "ticker": "00878.TW",
+    "name": "國泰永續高股息",
+    "category": "高股息"
+  },
+  {
+    "ticker": "00919.TW",
+    "name": "群益台灣精選高息",
+    "category": "高股息"
+  },
+  {
+    "ticker": "00929.TW",
+    "name": "復華台灣科技優息",
+    "category": "高股息"
+  },
+  {
+    "ticker": "00918.TW",
+    "name": "大華優利高填息30",
+    "category": "高股息"
+  }
   ],
-  "top_n_etf": 5,
+  "top_n_etf": 15,
   "universe_ttl_days": 7,
   "min_pool_size": 50,
   "rr_thresholds": {
@@ -72,12 +102,16 @@
   "ai_review": {
     "_comment": "Top5 AI 質性覆核。OPENAI_BASE_URL/OPENAI_API_KEY/OPENAI_MODEL 三個環境變數齊備即自動啟用；設 \"enabled\": false 可強制關閉。base_url 範例：雲端 https://api.openai.com/v1／本地 Qwen http://localhost:11434/v1",
     "base_url": "",
-    "model": "laguna-s-2.1-free",
+    "model": "hy3-free",
     "temperature": 0.2,
-    "max_tokens": 1200,
+    "max_tokens": 16384,
+    "retries": 3,
+    "retry_backoff": 5,
+    "retry_delay": 3,
     "system_prompt": "你現在是一名資深台股量化投資分析師，拿到數據不是只是看數據給結論，而是要重新收集相關數據及校驗數據及分析市場後，給出真實的台股量化投資建議。",
     "fallback_models": [
-      "nemotron-3-ultra-free"
+      "nemotron-3-ultra-free",
+      "mimo-v2.5-free"
     ]
   }
 }
