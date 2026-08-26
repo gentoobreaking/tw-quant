@@ -95,6 +95,15 @@ def write_summary_markdown(
     md_path = out_dir / f"pipeline_{stamp}_summary.md"
     today = datetime.now().strftime("%Y-%m-%d")
 
+    def rename_for_display(df: pd.DataFrame) -> pd.DataFrame:
+        """將欄位名轉為中文顯示名"""
+        return df.rename(columns={c: DISPLAY_NAMES.get(c, c) for c in df.columns})
+
+    # 統計
+
+    md_path = out_dir / f"pipeline_{stamp}_summary.md"
+    today = datetime.now().strftime("%Y-%m-%d")
+
     # 統計
     n_total = len(full)
     n_s = (full.get("grade", pd.Series()) == "S").sum()
@@ -122,7 +131,7 @@ def write_summary_markdown(
             cols = ["訊號", "ticker", "name", "sector", "grade", "total", "rr",
                     "close", "entry_low", "entry_high", "stop_loss", "target_price"]
             use = [c for c in cols if c in top5.columns]
-            f.write(top5[use].to_markdown(index=False))
+            f.write(rename_for_display(top5[use]).to_markdown(index=False))
             f.write("\n\n")
 
         # Top10
@@ -130,7 +139,7 @@ def write_summary_markdown(
         cols10 = ["訊號", "ticker", "name", "sector", "grade", "total", "rr",
                   "close", "dist_60d_high", "foreign_20d", "main_force_20d"]
         use10 = [c for c in cols10 if c in top10.columns]
-        f.write(top10[use10].to_markdown(index=False))
+        f.write(rename_for_display(top10[use10]).to_markdown(index=False))
         f.write("\n\n")
 
         # 分級分布
@@ -190,7 +199,6 @@ FORMULA_TABLE: list[tuple[str, str, str]] = [
     ("rr", "(目標價−進場區中值)/(進場區中值−停損)，門檻 S≥2.0/A≥1.5", "衍生"),
     ("total / 各因子分項", "五因子加總（上限100）", "衍生"),
 ]
-
 FULL_COLUMNS = ["ticker", "name", "sector", "total",
                 "eps_2026", "eps_2027", "rev_1m", "rev_3m",
                 "foreign_20d", "main_force_20d",
@@ -198,6 +206,39 @@ FULL_COLUMNS = ["ticker", "name", "sector", "total",
                 "entry_low", "entry_high", "stop_loss",
                 "target_price", "rr"]
 
+# 中文欄位名對照（僅供 Markdown 顯示用，內部資料保持英文）
+DISPLAY_NAMES = {
+    "訊號": "訊號",
+    "ticker": "代號",
+    "name": "名稱",
+    "sector": "產業",
+    "grade": "等級",
+    "total": "總分",
+    "f1": "因子①", "f2": "因子②", "f3": "因子③", "f4": "因子④", "f5": "因子⑤",
+    "count": "計數",
+    "eps_2026": "EPS_2026", "eps_2027": "EPS_2027",
+    "growth_2026": "成長_2026", "growth_2027": "成長_2027",
+    "rev_yoy_3m": "營收YoY_3M",
+    "rev_1m": "月營收_1M", "rev_3m": "月營收_3M",
+    "analysts": "分析師數",
+    "note": "備註",
+    "target_mean": "目標均價",
+    "foreign_20d": "外資_20日", "trust_20d": "投信_20日", "main_force_20d": "主力_20日",
+    "close": "收盤", "ma20": "MA20", "ma60": "MA60",
+    "dist_60d_high": "距60高%",
+    "dd60_pct": "回撤_60日%", "dd120_pct": "回撤_120日%",
+    "pos_52w": "52W位置",
+    "rsi14": "RSI14",
+    "entry_low": "進場下限", "entry_high": "進場上限",
+    "stop_loss": "停損", "target_price": "目標價",
+    "rr": "R/R",
+    "target_note": "目標註記", "entry_note": "進場註記",
+    "rejected_rules": "觸發規則",
+    "conclusion": "結論",
+    "AI評估": "AI評估",
+    "screen_date": "篩選日期",
+    "created_at": "建立時間",
+}
 
 def run_scoring(universe: pd.DataFrame, cfg: dict, cache,
                 rate_limiter=None, finmind=None) -> tuple[
@@ -337,6 +378,10 @@ def write_reports(full: pd.DataFrame, top10: pd.DataFrame,
                     disp[col] = disp[col].where(disp[col].notna(), reason)
             return disp
 
+        def rename_for_display(df: pd.DataFrame) -> pd.DataFrame:
+            """將欄位名轉為中文顯示名"""
+            return df.rename(columns={c: DISPLAY_NAMES.get(c, c) for c in df.columns})
+
         def table(df, title):
             f.write(f"\n## {title}\n\n")
             disp = display_view(df)
@@ -344,7 +389,7 @@ def write_reports(full: pd.DataFrame, top10: pd.DataFrame,
             use += [c for c in ("note",) if c in disp.columns]
             if "訊號" in disp.columns:
                 use = ["訊號"] + [c for c in use if c != "訊號"]
-            f.write(disp[use].to_markdown(index=False))
+            f.write(rename_for_display(disp[use]).to_markdown(index=False))
             f.write("\n")
 
         f.write(f"# 找買點量化表 {today}\n")
@@ -362,7 +407,7 @@ def write_reports(full: pd.DataFrame, top10: pd.DataFrame,
             if "grade" in top5.columns and "conclusion" in top5.columns:
                 pass
             f.write("\n## 一、Top5 買點清單\n\n")
-            f.write(top5[use5].to_markdown(index=False))
+            f.write(rename_for_display(top5[use5]).to_markdown(index=False))
             f.write("\n")
 
         table(top10, "二、表二：Top10 量化表")
@@ -375,7 +420,7 @@ def write_reports(full: pd.DataFrame, top10: pd.DataFrame,
             rej["規則"] = rej["rejected_rules"].map(explain_rejected_rules)
             ure = [c for c in ("ticker", "name", "rejected_rules",
                                "規則", "total") if c in rej.columns]
-            f.write(rej[ure].to_markdown(index=False))
+            f.write(rename_for_display(rej[ure]).to_markdown(index=False))
             f.write("\n\n**硬淘汰規則：**\n\n")
             for code in ("H1", "H2", "H3", "H4", "H5"):
                 f.write(f"- {HARD_RULE_LEGEND[code]}\n")
@@ -409,12 +454,12 @@ def write_reports(full: pd.DataFrame, top10: pd.DataFrame,
         f.write("| 欄位 | 公式 | 資料源 |\n|---|---|---|\n")
         for col, formula, src in FORMULA_TABLE:
             f.write(f"| {col} | {formula} | {src} |\n")
-        f.write("\n### 7-B 每檔計算數值（欄位順序與 7-A 對應，原始數值＋子項得分）\n\n")
         if details is not None and not details.empty:
+            f.write("\n### 7-B 每檔計算數值（欄位順序與 7-A 對應，原始數值＋子項得分）\n\n")
             spec_cols = [c for c, _, _ in FORMULA_TABLE if c in details.columns]
             other = [c for c in details.columns if c not in spec_cols
                      and c != "ticker"]
-            f.write(details[["ticker"] + spec_cols + other].to_markdown(
+            f.write(rename_for_display(details[["ticker"] + spec_cols + other]).to_markdown(
                 index=False))
             f.write("\n")
         else:
