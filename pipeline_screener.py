@@ -234,9 +234,9 @@ def main(argv: Optional[list] = None) -> int:
             top5["AI評估"] = reviews
             logger.info("AI 覆核完成：%d 檔", len(reviews))
 
-        md_path, *_ = write_reports(annotated, top10, details,
-                                    rejected=rejected,
-                                    stats=get_stats(), top5=top5)
+        md_path = write_reports(annotated, top10, details,
+                                rejected=rejected,
+                                stats=get_stats(), top5=top5)
         logger.info("完成！報表：%s", md_path)
     except Exception as e:  # noqa: BLE001
         logger.error("管線執行失敗：%s", e)
