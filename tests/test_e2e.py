@@ -44,9 +44,9 @@ def test_write_reports_sections(tmp_path, monkeypatch):
                           "conclusion": "EPS上修＋法人轉買＋低位階＋2027成長，研究進場"}])
 
     from common.scorer import write_reports
-    md, cf, c10, cd = write_reports(full, top10, details,
-                                    rejected=rejected, stats=stats,
-                                    top5=top5, out_dir=tmp_path)
+    md = write_reports(full, top10, details,
+                       rejected=rejected, stats=stats,
+                       top5=top5, out_dir=tmp_path)
     text = open(md, encoding="utf-8").read()
     for section in ("一、Top5 買點清單", "二、表二：Top10 量化表",
                     "三、表一：全量量化表", "四、淘汰名單",
@@ -59,8 +59,13 @@ def test_write_reports_sections(tmp_path, monkeypatch):
     assert "H1：2027 EPS 預估負成長" in text  # 圖例渲染
     assert "S 級：" in text                   # 分級定義圖例
     assert "7-B" in text                     # 子項數值附錄
-    assert cf.exists() and c10.exists() and cd.exists()
 
+    # 新輸出：Parquet + SQLite + summary.md（不再有 CSV）
+    assert (tmp_path / "pipeline_20260826_full.parquet").exists()
+    assert (tmp_path / "pipeline_20260826_top10.parquet").exists()
+    assert (tmp_path / "pipeline_20260826_top5.parquet").exists()
+    assert (tmp_path / "screening_history.db").exists()
+    assert (tmp_path / "pipeline_20260826_summary.md").exists()
 
 # ---- FinMind 備援演練：主路徑失敗 → 統計計數 ----
 def test_fallback_stats_counted():

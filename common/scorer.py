@@ -14,10 +14,147 @@ from .logger import logger
 
 RESULT_DIR = Path(__file__).resolve().parent.parent / "screening_results"
 
+# --- Parquet + SQLite 持久化（新增，不影響既有 Markdown/CSV） ---
+
+import sqlite3
+from typing import Optional
+
+DB_PATH = RESULT_DIR / "screening_history.db"
+def persist_parquet_sqlite(
+    full: pd.DataFrame,
+    top10: pd.DataFrame,
+    top5: Optional[pd.DataFrame] = None,
+    stamp: Optional[str] = None,
+    out_dir: Optional[Path] = None,
+) -> None:
+    """將評分結果寫入 Parquet + SQLite（累積歷史），既有 Markdown/CSV 維持不變"""
+    if stamp is None:
+        stamp = datetime.now().strftime("%Y%m%d")
+    if out_dir is None:
+        out_dir = RESULT_DIR
+
+    # 確保 screen_date 欄位
+    for df in (full, top10):
+        if "screen_date" not in df.columns:
+            df["screen_date"] = stamp
+    if top5 is not None and "screen_date" not in top5.columns:
+        top5["screen_date"] = stamp
+
+    # 1. Parquet（各層次）
+    full.to_parquet(out_dir / f"pipeline_{stamp}_full.parquet",
+                    compression="zstd", index=False)
+    top10.to_parquet(out_dir / f"pipeline_{stamp}_top10.parquet",
+                     compression="zstd", index=False)
+    if top5 is not None and not top5.empty:
+        top5.to_parquet(out_dir / f"pipeline_{stamp}_top5.parquet",
+                        compression="zstd", index=False)
+
+    # 2. SQLite 累積
+    db_path = out_dir / "screening_history.db"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    try:
+        # 只寫全量表（含所有欄位），索引於 ticker + screen_date
+        full.to_sql("pipeline_results", conn, if_exists="append", index=False)
+        # 索引只建一次（IF NOT EXISTS）
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_pipeline_ticker_date
+            ON pipeline_results(ticker, screen_date)
+        """)
+        # grade 欄位不一定存在（測試資料可能缺），動態檢查
+        cols = [row[1] for row in conn.execute("PRAGMA table_info(pipeline_results)")]
+        if "grade" in cols:
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_pipeline_grade
+                ON pipeline_results(grade)
+            """)
+        conn.commit()
+    finally:
+        conn.close()
+
+    logger.info("Parquet/SQLite 持久化：pipeline_%s_full.parquet + screening_history.db", stamp)
+
+    # 3. 精簡摘要 Markdown（供快速瀏覽，不影響既有完整報表）
+    write_summary_markdown(full, top10, top5, stamp, out_dir)
+
+def write_summary_markdown(
+    full: pd.DataFrame,
+    top10: pd.DataFrame,
+    top5: Optional[pd.DataFrame] = None,
+    stamp: Optional[str] = None,
+    out_dir: Optional[Path] = None,
+) -> None:
+    """輸出精簡版摘要：pipeline_YYYYMMDD_summary.md
+    僅含：統計概覽、Top5、Top10、分級分布、產業 Top3
+    """
+    if stamp is None:
+        stamp = datetime.now().strftime("%Y%m%d")
+    if out_dir is None:
+        out_dir = RESULT_DIR
+
+    md_path = out_dir / f"pipeline_{stamp}_summary.md"
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    # 統計
+    n_total = len(full)
+    n_s = (full.get("grade", pd.Series()) == "S").sum()
+    n_a = (full.get("grade", pd.Series()) == "A").sum()
+    n_b = (full.get("grade", pd.Series()) == "B").sum()
+    n_c = (full.get("grade", pd.Series()) == "C").sum()
+    n_r = (full.get("grade", pd.Series()) == "R").sum()
+
+    # 產業前 3
+    sector_dist = ""
+    if "sector" in full.columns:
+        top_sectors = full["sector"].value_counts().head(3)
+        sector_dist = "\n".join(f"- {s}: {c} 檔" for s, c in top_sectors.items())
+
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write(f"# 找買點管線摘要 {today}\n\n")
+
+        f.write("## 📊 概覽\n\n")
+        f.write(f"- 總計：{n_total} 檔\n")
+        f.write(f"- 🟢 S 級：{n_s} ｜ 🟡 A 級：{n_a} ｜ 🟠 B 級：{n_b} ｜ ⚪ C 級：{n_c} ｜ 🔴 R 級：{n_r}\n\n")
+
+        # Top5
+        if top5 is not None and not top5.empty:
+            f.write("## 🎯 Top5 買點清單\n\n")
+            cols = ["訊號", "ticker", "name", "sector", "grade", "total", "rr",
+                    "close", "entry_low", "entry_high", "stop_loss", "target_price"]
+            use = [c for c in cols if c in top5.columns]
+            f.write(top5[use].to_markdown(index=False))
+            f.write("\n\n")
+
+        # Top10
+        f.write("## 📋 Top10 量化表\n\n")
+        cols10 = ["訊號", "ticker", "name", "sector", "grade", "total", "rr",
+                  "close", "dist_60d_high", "foreign_20d", "main_force_20d"]
+        use10 = [c for c in cols10 if c in top10.columns]
+        f.write(top10[use10].to_markdown(index=False))
+        f.write("\n\n")
+
+        # 分級分布
+        f.write("## 📈 分級分布\n\n")
+        for grade, label in [("S", "研究進場"), ("A", "等待買點"), ("B", "股價過高"), ("C", "條件不符"), ("R", "淘汰")]:
+            cnt = (full.get("grade", pd.Series()) == grade).sum()
+            if cnt:
+                f.write(f"- {grade}（{label}）：{cnt} 檔\n")
+        f.write("\n")
+
+        # 產業分布
+        if sector_dist:
+            f.write("## 🏭 產業 Top3\n\n")
+            f.write(sector_dist + "\n\n")
+
+        f.write("---\n")
+        f.write(f"*完整報表：`pipeline_{stamp}.md` ｜ 明細資料：`pipeline_{stamp}_full.parquet` / `screening_history.db`*\n")
+
+    logger.info("摘要輸出：%s", md_path.name)
+
+
 # 欄位計算說明（稽核附錄）的單一資料源：
 # 6-A 公式總表由此渲染；6-B 明細欄位順序亦以此為準（兩者結構性一致）
 FORMULA_TABLE: list[tuple[str, str, str]] = [
-    # ---- 原始數值 ----
     ("rev_1m_pct", "(current−30daysAgo)/abs(30daysAgo)×100（0y）",
      "yfinance eps_trend"),
     ("rev_3m_pct", "(current−90daysAgo)/abs(90daysAgo)×100（0y）",
@@ -174,13 +311,6 @@ def write_reports(full: pd.DataFrame, top10: pd.DataFrame,
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d")
     md_path = out_dir / f"pipeline_{stamp}.md"
-    csv_full = out_dir / f"pipeline_{stamp}_full.csv"
-    csv_top10 = out_dir / f"pipeline_{stamp}_top10.csv"
-    csv_detail = out_dir / f"pipeline_{stamp}_detail.csv"
-
-    full.to_csv(csv_full, index=False, encoding="utf-8-sig")
-    top10.to_csv(csv_top10, index=False, encoding="utf-8-sig")
-    details.to_csv(csv_detail, index=False, encoding="utf-8-sig")
 
     with open(md_path, "w", encoding="utf-8") as f:
         today = datetime.now().strftime("%Y-%m-%d")
@@ -269,7 +399,10 @@ def write_reports(full: pd.DataFrame, top10: pd.DataFrame,
         f.write(f"- FinMind 備援啟用：{st.get('finmind', 0)} 次\n")
         f.write(f"- 備援仍失敗（N/A）：{st.get('failures', 0)} 次\n")
 
+    # --- Parquet + SQLite 持久化（新增） ---
+    persist_parquet_sqlite(full, top10, top5, stamp, out_dir)
     # 六、欄位計算說明（稽核附錄——獨立章節，不與表格混排）
+
     with open(md_path, "a", encoding="utf-8") as f:
         f.write("\n## 七、欄位計算說明（稽核附錄）\n")
         f.write("\n### 7-A 公式總表\n\n")
@@ -287,6 +420,5 @@ def write_reports(full: pd.DataFrame, top10: pd.DataFrame,
         else:
             f.write("無明細。\n")
 
-    logger.info("報表輸出：%s（+%s / %s / %s）",
-                md_path.name, csv_full.name, csv_top10.name, csv_detail.name)
-    return md_path, csv_full, csv_top10, csv_detail
+    logger.info("報表輸出：%s", md_path.name)
+    return md_path
