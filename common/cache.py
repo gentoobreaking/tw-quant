@@ -189,6 +189,9 @@ class DiskCache:
             # 資料庫錯誤（PG 鎖定、連線中斷等）
             logger.warning("快取寫入失敗 key=%s: %s", key, e)
 
+        return val
+
+
     def flush(self):
         """強制寫入（SQLite 已 auto-commit，此處清理過期條目）"""
         if self._dirty:
