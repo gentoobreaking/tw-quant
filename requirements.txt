@@ -11,6 +11,9 @@ requests>=2.25
 yfinance>=0.2.50
 twstock>=1.5.1
 
+# 資料庫
+psycopg[binary]>=3.1
+
 # 網頁解析
 beautifulsoup4>=4.10
 lxml>=4.6           # beautifulsoup4 底層解析器，TWCC/TDCC/ISIN 頁面解析使用
@@ -20,4 +23,5 @@ colorama>=0.4
 tqdm>=4.60
 
 # 測試
-pytest>=7.0tabulate
+pytest>=7.0
+tabulate

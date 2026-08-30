@@ -1,7 +1,9 @@
 """設定檔載入 — 支援 deep merge 外部 JSON 覆蓋預設值"""
+
 import copy
 import json
 import os
+from typing import Optional
 
 
 def deep_merge(base: dict, override: dict) -> dict:
@@ -25,3 +27,16 @@ def load_config(config_path: str, defaults: dict) -> dict:
         except Exception:
             pass
     return cfg
+
+
+def get_database_url() -> Optional[str]:
+    """取得 PostgreSQL 連線字串 (DATABASE_URL 環境變數)"""
+    return os.environ.get("DATABASE_URL")
+
+
+def get_cache_config(cfg: dict) -> dict:
+    """從設定中取得快取配置"""
+    cache_cfg = cfg.get("cache", {})
+    db_url = cache_cfg.get("database_url") or os.environ.get("DATABASE_URL")
+    ttl = cache_cfg.get("ttl_seconds", 7200)
+    return {"database_url": db_url, "ttl": ttl}
