@@ -1,6 +1,7 @@
 # TW-Quant — 台股得分制篩選器 + ETF 雙軌篩選系統 + 找買點管線
 
 本專案是一個基於 Python 的自動化台股篩選工具，結合了技術面、基本面、籌碼面與位階分析（**v5**：得分制、20 條件全景體檢、SQLite 快取）。
+**後端資料**：本專案僅使用 SQLite 快取（`.cache/tw_quant.db`）。如需 PostgreSQL 後端，請設定 `DATABASE_URL=postgresql://twquant:twquant-secret-password@host.docker.internal:5432/twquant_shared` 連接到 [tw-quant-db](https://github.com/gentoobreaking/tw-quant-db) 的共享 PostgreSQL。
 
 | 工具 | 進入點 | 說明 |
 |------|--------|------|
