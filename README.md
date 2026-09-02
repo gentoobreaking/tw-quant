@@ -1,7 +1,7 @@
 # TW-Quant — 台股得分制篩選器 + ETF 雙軌篩選系統 + 找買點管線
 
-本專案是一個基於 Python 的自動化台股篩選工具，結合了技術面、基本面、籌碼面與位階分析（**v5**：得分制、20 條件全景體檢、SQLite 快取）。
-**後端資料**：本專案僅使用 SQLite 快取（`.cache/tw_quant.db`）。如需 PostgreSQL 後端，請設定 `DATABASE_URL=postgresql://twquant:twquant-secret-password@host.docker.internal:5432/twquant_shared` 連接到 [tw-quant-db](https://github.com/gentoobreaking/tw-quant-db) 的共享 PostgreSQL。
+本專案是一個基於 Python 的自動化台股篩選工具，結合了技術面、基本面、籌碼面與位階分析（**v5**：得分制、20 條件全景體檢、SQLite / PostgreSQL 雙模式快取）。
+> **後端資料**：`common/cache.py` 的 `DiskCache` 已切 **共享 DB 雙模式** —— 預設仍可單機 `SQLite`（`.cache/tw_quant.db`），若設定 `DATABASE_URL` 則自動切到 [tw-quant-db](https://github.com/gentoobreaking/tw-quant-db) 的共享 PostgreSQL `pickup.cache` 表（`psycopg`，執行緒安全 + 斷線重連）。建議新部署直接走共享 DB，詳見「Quick Start 一鍵起」與「共享快取」章節。
 
 | 工具 | 進入點 | 說明 |
 |------|--------|------|
@@ -21,6 +21,42 @@
 - **市值分群門檻**：自動根據公司市值（大型/中型/小型）套用不同的營收 YoY 與財務門檻。
 - **優先級篩選**：自動按市值排序，優先處理權值股與高價值標的。
 - **高效快取**：使用 SQLite 取代傳統 JSON，解決巨型資料載入效能問題。
+## 系統架構與共享 DB 依賴
+
+```mermaid
+flowchart TD
+    subgraph DB["tw-quant-db (共享資料層)"]
+        PG[(PostgreSQL 16<br/>twquant_shared)]
+        INIT[tw-quant-init<br/>自動種子+漸進回補]
+        API[tw-quant-backfill-api<br/>:8080]
+        BF[tw-quant-backfill<br/>Go 回補服務]
+        PGADMIN[pgAdmin :8001]
+        INIT -->|seed 3114 檔 + POST /backfill/trigger<br/>1d→7d→1m→1y→2y→3y→4y→5y| API
+        API --> BF
+        BF --> PG
+    end
+    subgraph APP["tw-quant (本專案)"]
+        SC1[stock_screener.py]
+        SC2[etf_screener.py]
+        SC3[pipeline_screener.py]
+        CACHE[common/cache.py<br/>DiskCache 雙模式]
+        SC1 --> CACHE
+        SC2 --> CACHE
+        SC3 --> CACHE
+    end
+    CACHE -- "DATABASE_URL 已設<br/>→ pickup.cache (psycopg)" --> PG
+    CACHE -- "未設<br/>→ .cache/tw_quant.db (SQLite)" --> SQLITE[(本地 SQLite)]
+    PG -.->|core.* 供其他服務查詢| PGADMIN
+```
+
+| 依賴方向 | 說明 |
+|---|---|
+| `tw-quant` → `tw-quant-db` | 本專案 **不自帶 DB**，共享 PostgreSQL 由 `tw-quant-db/docker-compose.yml` 提供（`postgres:5432` + `pgAdmin:8001` + `backfill-api:8080`），透過 `tw-quant-network`（`external: true`）互連 |
+| `DATABASE_URL` 已設 | `DiskCache` 自動切 `PostgreSQL`（`pickup.cache`），多實例共用快取，適合團隊/長期排程；`tw-quant-db` 若未啟動會連線失敗，請先 `docker compose up -d` |
+| `DATABASE_URL` 未設 | 回退 `SQLite`（`.cache/tw_quant.db` / `.cache_etf/tw_quant_etf.db`），零依賴單機運行，適合本地快速試跑 |
+| 自動種子+漸進回補 | `tw-quant-db` 的 `tw-quant-init` 容器會在 `docker compose up` 後自動執行 `seed_all_listed.py`（`core.stocks` 空時灌 3114 檔）並循序觸發 `1d→5y` 回補，詳見下一節 |
+
+> **一鍵起順序**：`docker network create tw-quant-network` → `tw-quant-db` `docker compose up -d`（等 `tw-quant-db` healthy）→ 本專案 `export DATABASE_URL=...` → `python pipeline_screener.py`。未裝 Docker 也可直接本地跑（走 SQLite）。
 
 ## 資料源
 
@@ -105,6 +141,46 @@
 | 2454 聯發科 | 55 | ⚫ OUT | ✅ C13散戶接 | — |
 | 2881 富邦金 | 35 | ⚫ OUT | ✅ C13散戶接 | — |
 
+## Quick Start 一鍵起（含共享 DB）
+
+> **前提**：已安裝 Docker Desktop（共享 DB 由 `tw-quant-db` 提供）。本專案本身無 `docker-compose.yml`，一鍵起指的是先把 `tw-quant-db` 拉起來，再跑本專案篩選。
+
+```bash
+# 0) 共享網路（首次一次；若已存在會提示已存在可忽略）
+docker network create tw-quant-network
+
+# 1) 啟動共享 PostgreSQL（自動種子 + 漸進回補 1d→5y，背景執行）
+cd ~/Projects/tw-quant-db
+docker compose up -d
+# 等待健康：docker compose ps / docker logs tw-quant-init --follow
+# 啟動內容：postgres:5432 + pgadmin:8001 + backfill-api:8080 + tw-quant-init
+# tw-quant-init 會：① 若 core.stocks 為空 → seed_all_listed.py 灌 3114 檔
+#                  ② 依序 POST /api/v1/backfill/trigger 1d 7d 1m 1y 2y 3y 4y 5y（--resume，poll 至 completed）
+
+# 2) 回到本專案，設定 DATABASE_URL（指向共享 DB）
+cd ~/Projects/tw-quant
+export DATABASE_URL="postgresql://twquant:$(cat ~/Projects/tw-quant-db/secrets/postgres_password.txt)@localhost:5432/twquant_shared"
+# 或寫入 .env / config_secrets.json（建議用環境變數，避免進版控）
+
+# 3) 安裝依賴並執行（首跑會自動建 pickup.cache 表）
+python3 -m venv venv && source venv/bin/activate
+python3 -m pip install -r requirements.txt      # 含 psycopg[binary]
+python3 stock_screener.py                       # 個股 20 條件
+python3 etf_screener.py                         # ETF 雙軌
+python3 pipeline_screener.py                    # 找買點管線（ETF 成分股 → Top5）
+
+# 4) 驗證走共享 DB（應印 pickup.cache 或連線成功；未設則走 .cache/tw_quant.db）
+# 關閉共享：docker compose -f ~/Projects/tw-quant-db/docker-compose.yml down
+# 本地單機：unset DATABASE_URL && python3 pipeline_screener.py --dry-run
+```
+
+| 模式 | 如何啟用 | 快取位置 | 適用場景 |
+|------|----------|----------|----------|
+| **共享 PostgreSQL** | `export DATABASE_URL=postgresql://twquant:...@localhost:5432/twquant_shared` | `pickup.cache`（`tw-quant-db` 的 `twquant_shared`）| 團隊共用、排程、多實例、長期回測 |
+| **本地 SQLite** | 不設 `DATABASE_URL`（或 `unset`） | `.cache/tw_quant.db` / `.cache_etf/tw_quant_etf.db` | 單機快速試跑、無 Docker 環境 |
+
+**依賴關係**：`tw-quant` ──`DATABASE_URL`──▶ `tw-quant-db:5432` ──▶ `tw-quant-backfill-api:8080` ＋ `tw-quant-mcp:8888`（MCP 來源）。`tw-quant-db` 的 `docker compose up` 已內含 **自動種子 + 漸進回補**，本專案無需額外初始化。
+
 ## 安裝與執行
 
 ### 環境要求
@@ -152,6 +228,38 @@ python3 stock_screener.py
 python3 etf_screener.py
 ```
 
+### 共享快取：SQLite ↔ PostgreSQL 雙模式（已切共享 DB）
+
+| 項目 | SQLite（本地） | PostgreSQL（共享，建議） |
+|------|---------------|--------------------------|
+| 啟用方式 | 不設 `DATABASE_URL` | `export DATABASE_URL=postgresql://twquant:<pw>@localhost:5432/twquant_shared`（`host.docker.internal` 亦可，Docker 內請用 `tw-quant-db:5432`） |
+| 實作 | `common/cache.py:DiskCache._get_conn()`（`sqlite3`，每執行緒獨立連線 + `_write_lock`） | `DiskCache._get_pg_conn()`（`psycopg`，`autocommit=True`，`SELECT 1` 斷線重連） |
+| 表 | `cache(key TEXT PK, data TEXT, ts REAL)`（`db_path`） | `pickup.cache(key TEXT PK, data TEXT, ts REAL)`（`CREATE TABLE IF NOT EXISTS`，`_ensure_pg_table()` 自動建表） |
+| TTL | `cache_ttl_seconds`（`config.json` / `7200` 預設） | 同左（`get_cache_config()` 統一讀 `cache.database_url` 或 `DATABASE_URL` 環境變數） |
+| 介面 | `DiskCache.get(key, fetch_fn)` / `flush()` / `close()` 完全一致 | 同左（`_get_cache_conn()` 依 `_use_pg` 自動路由），舊 `load_disk_cache()` / `save_disk_cache()` 亦相容 |
+
+> **現況**：程式碼已完成雙模式，**預設本地、選配共享**。新部署建議直接設 `DATABASE_URL` 走共享；既有本地 `.cache/*.db` 無需手動遷移，若需共用可重跑一次讓快取自然寫入 PostgreSQL，或用 `tw-quant-db/migrations/T018-pickup-cache.sql` 對照結構。
+> **遷移建議（仍用本地 cache 者）**：① `cd ~/Projects/tw-quant-db && docker compose up -d` ② `export DATABASE_URL=...` ③ `python3 -m pip install psycopg[binary]` ④ 重跑 `stock_screener.py` / `pipeline_screener.py` 即自動切表；舊 `.cache/*.db` 可保留作離線備援或刪除。
+
+### 自動種子 + 漸進回補（由 tw-quant-db 提供）
+
+`docker compose up` 在 `tw-quant-db` 端會自動做兩件事，本專案**無需額外指令**即可受益：
+
+1. **自動種子**：`scripts/seed_all_listed.py` 呼叫 FinMind `TaiwanStockInfo`，若 `core.stocks` 為空則寫入 **3114 檔**上市櫃全清單（含 `symbol/name/market/sector/industry`，需 `FINMIND_TOKEN`）。
+2. **漸進回補**：`scripts/progressive-init.py`（`tw-quant-init` 容器，`python:3.12-alpine` + `httpx + psycopg`）採 **兩階段** 執行：
+   - **階段一 — ETF 成分股先回補**：6 檔 ETF (0050/0056/00878/00919/00406A/00713) 本體 + 成分股（60 檔去重），1d→7d→1m→1y→2y→3y→4y→5y。ETF 清單為靜態快照，避 FinMind 402 限流。
+   - **階段二 — 全量回補**：3114 檔 1d→7d→1m→1y→2y→3y→4y→5y，每段 `POST /api/v1/backfill/trigger --resume` 並 `poll 10s` 至 `completed`（單段最長 30 分鐘），由近及遠填滿 `core.daily_prices` 等 `core.*` 缺口。
+
+```bash
+# 觀察回補進度
+docker logs tw-quant-init --follow          # 看 [progressive] 1d..5y 逐段日誌
+docker logs tw-quant-backfill-api --follow  # 看 Go backfill checkpoint
+ls ~/Projects/tw-quant-db/backfill_data/    # 回補報告 JSON
+psql "postgresql://twquant:<pw>@localhost:5432/twquant_shared" -c "SELECT count(*) FROM core.stocks; SELECT count(*) FROM core.daily_prices;"
+```
+
+本專案的 `pipeline_screener.py` / `stock_screener.py` 仍以 `yfinance/TWSE/FinMind/TDCC` 為主資料源，快取未命中時才發網路請求；當 `tw-quant-db` 的 `core.*` 已回補完成，後續可由上游管線直接查 `core.*`（`source_role=CANONICAL/FALLBACK`），減少重複抓取。
+
 ### 檢視結果
 - **終端機**：顯示即時篩選明細與分級摘要。
 - **CSV 報告**：自動儲存於 `screening_results/screening_YYYYMM.csv`。
@@ -193,13 +301,15 @@ python3 dump_candidates.py --check
 
 ```
 tw-quant/
-├── stock_screener.py        # 個股篩選主程式
+├── stock_screener.py        # 個股篩選主程式（DiskCache 雙模式，批次優先級）
 ├── etf_screener.py          # ETF 雙軌篩選器
+├── pipeline_screener.py     # 找買點管線（Stage0→Stage2，DiskCache 雙模式）
 ├── dump_candidates.py       # 候選清單自動產生器（TWSE API）
 ├── common/
 │   ├── __init__.py
+│   ├── cache.py             # SQLite/PostgreSQL 雙模式磁碟快取（DATABASE_URL→pickup.cache，否則 SQLite）
+│   ├── config.py            # get_database_url() / get_cache_config()（讀 DATABASE_URL / cache.database_url）
 │   ├── etf_yahoo.py         # ETF 持股動態抓取（Yahoo Finance TW）
-│   ├── cache.py             # SQLite 磁碟快取
 │   ├── kd.py                # KD 計算（含 warmup + 平滑參數）
 │   ├── rate_limit.py        # 執行緒安全 RateLimiter
 │   ├── scoring.py           # 得分制、硬淘汰、四層分類、出場信號(E1~E5)
@@ -207,18 +317,21 @@ tw-quant/
 │   └── yf_utils.py          # yfinance 批次下載、get_stock_info(4-tier)
 ├── config.json              # 個股篩選參數
 ├── config_etf.json          # ETF 篩選參數
+├── config_pipeline.json     # 管線參數（etf_candidates/top_n_etf/rr_thresholds/ai_review）
+├── config_secrets.json      # 機密（FINMIND_TOKEN/OPENAI_*，gitignored，建議改用環境變數）
 ├── data/                    # 候選清單（動態產出，dump_candidates.py 維護）
 │   ├── candidates.csv       # 股票候選（~1079 檔）
 │   ├── candidates_ETF.csv   # ETF 候選（~229 檔）
 │   ├── candidates_ETN.csv   # ETN 候選（~15 檔）
 │   └── candidates_REAT.csv  # REAT 候選（~6 檔）
+├── .cache/                  # 本地 SQLite 快取（未設 DATABASE_URL 時）
 ├── etf_top10_holdings.py    # 獨立腳本：快速查詢單檔 ETF 前十持股
 ├── analyze-report.py        # 報告 LLM 分析（直呼 API，吃 ai_review 設定）
 ├── pi-analyze-report.sh     # 報告 pi agent 分析（非互動 print 模式）
 ├── chat-report.py           # 報告網頁版 ChatGPT/Grok 分析（免 key，camofox）
 ├── test-case/               # AI 覆核實驗腳本（ai-test.py 等）
 ├── tests/                    # pytest 單元測試（43 tests）
-└── screening_results/        # 篩選結果 CSV（每月一個）
+└── screening_results/        # 篩選結果 CSV/Parquet/Markdown（每月/每日一個）
 ```
 
 **附：快速查詢 ETF 持股**
@@ -288,10 +401,11 @@ python3 pipeline_screener.py --dry-run          # 驗證設定，不發網路請
 | 族群分類 | MoneyDJ（Big5 解析） | FinMind TaiwanStockInfo |
 | 大戶持股 | TDCC 集保 | — |
 
-### 快取與回補
+### 快取與回補（雙模式）
 
-- 成功取得的資料快取 12~24 小時（SQLite），重跑秒級完成、不消耗額度
-- 抓取失敗或資料缺失者**不入快取**——下次執行自動重試回補
+- **雙模式快取**：`common/cache.py` 已切 `pickup.cache`（`DATABASE_URL`→PostgreSQL）/ `.cache/tw_quant.db`（未設→SQLite），`DiskCache.get()` 介面一致；TTL `12~24 小時`（`config.json:cache_ttl_seconds=7200`），重跑秒級完成
+- **共享回補**：`tw-quant-db` 的 `tw-quant-init` 於 `docker compose up -d` 自動完成種子（`core.stocks 3114`）+ 漸進回補 `1d→5y`（`progressive-init.py` 循序觸發 `backfill-api:8080`），本專案無需額外操作；後續 `core.*` 可直查減少重複抓取
+- 抓取失敗或資料缺失者**不入快取**——下次執行自動重試回補（本地或共享皆同）
 
 ### AI 質性覆核（選配）
 
